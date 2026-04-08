@@ -38,7 +38,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
-        import { getFirestore } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+        import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
         import { firebaseConfig } from './firebase-config.js';
         import { initializeFirebase, saveZoneUpdate, loadAllZoneUpdates, getAllUsers, saveUserToFirestore, deleteUserFromFirestore, signOutUser } from './firebase-operations.js';
 
@@ -51,6 +51,20 @@
         window.saveUserToFirestore = saveUserToFirestore;
         window.deleteUserFromFirestore = deleteUserFromFirestore;
         window.signOutUser = signOutUser;
+
+        // إعداد الاستماع اللحظي (Real-time) لتحديثات الزونات من Firebase
+        window.listenToZoneUpdates = function(callback) {
+            const updatesRef = collection(window.db, 'zone_updates');
+            return onSnapshot(updatesRef, (snapshot) => {
+                const updates = {};
+                snapshot.forEach(doc => {
+                    updates[doc.id] = doc.data();
+                });
+                callback(updates);
+            }, (error) => {
+                console.error("Realtime listener error:", error);
+            });
+        };
     </script>
 
     <script src="assets/js/tailwind-config.js"></script>

@@ -184,7 +184,7 @@ export async function saveZoneUpdate(zoneCode, data) {
     try {
         if (window.firebaseInit) await window.firebaseInit;
 
-        const docRef = doc(window.db, 'zone_updates', zoneCode);
+        const docRef = doc(window.db, 'zone_updates', String(zoneCode));
         await setDoc(docRef, {
             ...data,
             updatedAt: new Date().toISOString()

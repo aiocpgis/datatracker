@@ -22,6 +22,60 @@ let chartsInitialized = false;
         }
         window.showToast = showToast;
 
+        // دالة نافذة التأكيد المخصصة (Custom Confirm Modal)
+        function showCustomConfirm(title, message, onConfirm) {
+            let modal = document.getElementById('customConfirmModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'customConfirmModal';
+                modal.className = 'fixed inset-0 z-[999999] hidden flex items-center justify-center p-4';
+                modal.innerHTML = `
+                    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="closeConfirmModalBg"></div>
+                    <div class="bg-white/95 backdrop-blur-2xl w-full max-w-sm flex flex-col rounded-3xl shadow-2xl relative z-10 overflow-hidden border border-white/40 animate__animated animate__zoomIn animate__faster">
+                        <div class="p-6 text-center">
+                            <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner border border-blue-100">
+                                <i class="fa-solid fa-cloud-arrow-up"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800 mb-2" id="confirmModalTitle"></h3>
+                            <p class="text-gray-500 font-medium text-sm mb-6" id="confirmModalMessage"></p>
+                            <div class="flex gap-3">
+                                <button id="confirmModalYesBtn" class="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-2.5 rounded-xl transition-all shadow-md">نعم، احفظ</button>
+                                <button id="confirmModalNoBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl transition-all border border-gray-200 shadow-sm">إلغاء</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+
+            document.getElementById('confirmModalTitle').innerText = title;
+            document.getElementById('confirmModalMessage').innerText = message;
+
+            const yesBtn = document.getElementById('confirmModalYesBtn');
+            const noBtn = document.getElementById('confirmModalNoBtn');
+            const bg = document.getElementById('closeConfirmModalBg');
+
+            const newYesBtn = yesBtn.cloneNode(true);
+            const newNoBtn = noBtn.cloneNode(true);
+            const newBg = bg.cloneNode(true);
+            yesBtn.replaceWith(newYesBtn);
+            noBtn.replaceWith(newNoBtn);
+            bg.replaceWith(newBg);
+
+            const closeModal = () => modal.classList.add('hidden');
+
+            newYesBtn.addEventListener('click', () => {
+                closeModal();
+                if (onConfirm) onConfirm();
+            });
+
+            newNoBtn.addEventListener('click', closeModal);
+            newBg.addEventListener('click', closeModal);
+
+            modal.classList.remove('hidden');
+        }
+        window.showCustomConfirm = showCustomConfirm;
+
         // دالة تحديث مؤشر المزامنة (Live)
         function updateCloudSyncStatus(state) {
             const statusBox = document.getElementById('cloudSyncStatus');
@@ -1195,6 +1249,23 @@ let chartsInitialized = false;
                 }
 
                 if (zoneData) {
+                    // دمج التحديثات المحفوظة مسبقاً من الفايربيز
+                    if (window.loadAllZoneUpdates) {
+                        try {
+                            const updates = await window.loadAllZoneUpdates();
+                            if (updates && typeof updates === 'object') {
+                                zoneData.features.forEach(f => {
+                                    const code = f.properties.zone_code || f.properties.area_code || f.properties.work_id || f.id;
+                                    if (code && updates[code]) {
+                                        Object.assign(f.properties, updates[code]);
+                                    }
+                                });
+                            }
+                        } catch (err) {
+                            console.error("Failed to load zone updates:", err);
+                        }
+                    }
+
                     window.zoneGeoJsonData = zoneData;
                     if (geoJsonLayers.zone) map.removeLayer(geoJsonLayers.zone);
                     
@@ -1211,6 +1282,51 @@ let chartsInitialized = false;
                     processZoneStatistics(scopedFeatures);
                     if (typeof initDashboardCharts === 'function') {
                         initDashboardCharts(); // Trigger chart redraw
+                    }
+
+                    // تفعيل الاستماع الفوري للتحديثات (Real-time)
+                    if (window.listenToZoneUpdates && !window.realtimeListenerActive) {
+                        window.realtimeListenerActive = true;
+                        window.listenToZoneUpdates((updates) => {
+                            if (!updates) return;
+                            let dataChanged = false;
+                            
+                            // تحديث خريطة التحرير
+                            if (geoJsonLayers.zone) {
+                                geoJsonLayers.zone.eachLayer(layer => {
+                                    const f = layer.feature;
+                                    const code = f.properties.zone_code || f.properties.area_code || f.properties.work_id || f.id;
+                                    if (code && updates[code]) {
+                                        const oldProps = JSON.stringify(f.properties);
+                                        Object.assign(f.properties, updates[code]);
+                                        if (oldProps !== JSON.stringify(f.properties)) {
+                                            if (layer.setStyle) layer.setStyle(getZoneStyle(f));
+                                            dataChanged = true;
+                                        }
+                                    }
+                                });
+                            }
+                            
+                            // تحديث خريطة العرض (إن وجدت)
+                            if (window.viewMapInstance) {
+                                window.viewMapInstance.eachLayer(layer => {
+                                    if (layer.feature && layer.feature.properties) {
+                                        const code = layer.feature.properties.zone_code || layer.feature.properties.area_code || layer.feature.properties.work_id || layer.feature.id;
+                                        if (code && updates[code]) {
+                                            Object.assign(layer.feature.properties, updates[code]);
+                                            if (layer.setStyle && typeof getZoneStyle === 'function') {
+                                                layer.setStyle(getZoneStyle(layer.feature));
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+
+                            // تحديث الإحصائيات لو صار في تغيير فعلي
+                            if (dataChanged && window.zoneGeoJsonData) {
+                                processZoneStatistics(filterFeaturesForCurrentUser(window.zoneGeoJsonData.features || []));
+                            }
+                        });
                     }
                 }
 
@@ -2182,8 +2298,8 @@ let chartsInitialized = false;
                     if(!currentSelectedLayer.feature.properties) {
                         currentSelectedLayer.feature.properties = {};
                     }
-                    if (!confirm('هل أنت متأكد أنك تريد حفظ التعديلات؟')) return;
                     
+                    window.showCustomConfirm('تأكيد الحفظ', 'هل أنت متأكد أنك تريد حفظ التعديلات على هذا الشكل؟', () => {
                     const rows = attributesContainer.querySelectorAll('.attribute-row');
                     rows.forEach(row => {
                         const keyInput = row.querySelector('input[data-field-key-input]');
@@ -2269,6 +2385,7 @@ let chartsInitialized = false;
                         attributesPanel.classList.remove('show-panel');
                         setTimeout(() => attributesPanel.classList.add('hidden-panel'), 500);
                     }, 1500);
+                    });
                 });
             }
 
