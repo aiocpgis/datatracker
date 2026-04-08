@@ -7,7 +7,7 @@
 
   const I18N = {
     ar: {
-      title: 'لوحة GIS غزة',
+      title: 'لوحة متابعة الحصر',
       navHome: 'محرر الخرائط',
       navStats: 'الإحصاء التحليلي',
       navFlow: 'عرض البيانات',
@@ -50,7 +50,7 @@
       loginFooter: '© جميع الحقوق محفوظة لدى الهيئة العربية الدولية للإعمار في فلسطين'
     },
     en: {
-      title: 'Gaza GIS Dashboard',
+      title: 'Survey Monitoring Dashboard',
       navHome: 'Map Editor',
       navStats: 'Analytical Statistics',
       navFlow: 'Data View',

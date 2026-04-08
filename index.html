@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- أيقونة الموقع لمنع خطأ 404 -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
-    <title>منظومة متابعة الحصر الميداني - غزة</title>
+    <title>لوحة متابعة الحصر</title>
     <!-- إطار عمل Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- خطوط جوجل: Cairo -->
@@ -1194,10 +1194,17 @@
                         class="bg-white text-slate-700 w-10 h-10 rounded-xl shadow-sm border border-slate-200 hover:bg-slate-50 transition flex items-center justify-center mb-1 group" title="إعادة الضبط">
                         <i class="fa-solid fa-rotate-left text-lg group-hover:-rotate-45 transition-transform"></i>
                     </button>
-                    <button id="btnExportPDF"
-                        class="bg-gradient-to-r from-emerald-500 to-teal-600 text-white w-10 h-10 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.05] transition-transform flex items-center justify-center" title="تصدير PDF">
-                        <i class="fa-solid fa-file-pdf text-lg"></i>
-                    </button>
+                    <div class="relative group">
+                        <button id="btnExportMenu" class="bg-gradient-to-r from-emerald-500 to-teal-600 text-white w-10 h-10 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.05] transition-transform flex items-center justify-center" title="خيارات التصدير">
+                            <i class="fa-solid fa-download text-lg"></i>
+                        </button>
+                        <div class="absolute bottom-full right-0 mb-2 w-40 glass-panel rounded-xl shadow-xl border-white/70 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform origin-bottom-right scale-95 group-hover:scale-100 flex flex-col p-2 z-[999] text-right">
+                            <button id="btnExportPNG" class="text-sm font-bold text-gray-700 hover:bg-gray-100 hover:text-blue-600 p-2 rounded-lg text-right flex items-center gap-2"><i class="fa-solid fa-image w-4 text-center"></i> تصدير PNG</button>
+                            <button id="btnExportJPG" class="text-sm font-bold text-gray-700 hover:bg-gray-100 hover:text-blue-600 p-2 rounded-lg text-right flex items-center gap-2"><i class="fa-solid fa-image w-4 text-center"></i> تصدير JPG</button>
+                            <button id="btnExportPDF" class="text-sm font-bold text-gray-700 hover:bg-gray-100 hover:text-red-600 p-2 rounded-lg text-right flex items-center gap-2"><i class="fa-solid fa-file-pdf w-4 text-center"></i> تصدير PDF</button>
+                            <button id="btnExportPrint" class="text-sm font-bold text-gray-700 hover:bg-gray-100 hover:text-emerald-600 p-2 rounded-lg text-right flex items-center gap-2"><i class="fa-solid fa-print w-4 text-center"></i> طباعة</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- مساحة العمل للورقة (Layout Canvas) -->

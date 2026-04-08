@@ -127,6 +127,8 @@
         uploadedLayer: 'طبقة مرفوعة',
         externalLayer: 'طبقة XYZ خارجية',
         paperBadgeCustom: 'مخصص',
+        exportMenu: 'خيارات التصدير',
+        exportPrint: 'طباعة'
       },
       en: {
         navLabel: 'Cartographic Output',
@@ -184,6 +186,8 @@
         uploadedLayer: 'Uploaded layer',
         externalLayer: 'External XYZ layer',
         paperBadgeCustom: 'Custom',
+        exportMenu: 'Export Options',
+        exportPrint: 'Print'
       }
     };
 
@@ -292,7 +296,11 @@
       btnAddLayoutScaleBar: qs('btnAddLayoutScaleBar'),
       btnAddLayoutLegend: qs('btnAddLayoutLegend'),
       layoutResetBtn: qs('layoutResetBtn'),
+      btnExportMenu: qs('btnExportMenu'),
+      btnExportPNG: qs('btnExportPNG'),
+      btnExportJPG: qs('btnExportJPG'),
       btnExportPDF: qs('btnExportPDF'),
+      btnExportPrint: qs('btnExportPrint'),
       layoutGeoJsonInput: qs('layoutGeoJsonInput'),
       layoutUrlBtn: qs('layoutUrlBtn'),
       layoutNorthArrow: qs('layoutNorthArrow'),
@@ -382,8 +390,12 @@
           fillOpacity: 0.15,
           interactive: false
         }).addTo(layoutOverviewMap);
+      } else {
+        layoutOverviewRect.setBounds(layoutMap.getBounds());
       }
-      layoutOverviewRect.setBounds(layoutMap.getBounds());
+      if (layoutOverviewRect.bringToFront) {
+        layoutOverviewRect.bringToFront();
+      }
     }
 
     function applyOverviewSettings(options = {}, silent = false) {
@@ -530,7 +542,7 @@
         [refs.btnAddLayoutScaleBar, 'scaleBar'],
         [refs.btnAddLayoutLegend, 'legend'],
         [refs.layoutResetBtn, 'resetLayout'],
-        [refs.btnExportPDF, 'exportImage'],
+        [refs.btnExportMenu, 'exportMenu'],
         [refs.propCycleStyleBtn, 'styleElement'],
         [refs.propColorPicker, 'colorElement'],
         [refs.propSizeIncBtn, 'sizeUp'],
@@ -609,7 +621,15 @@
 
     function fitLayoutOverviewToMain() {
       if (!layoutMap || !layoutOverviewMap || !state.overviewVisible) return;
-      layoutOverviewMap.fitBounds(layoutMap.getBounds(), { padding: [state.overviewPadding, state.overviewPadding] });
+      // جعل الموقع العام يركز على كافة البيانات بدلاً من التركيز على مربع العرض الحالي
+      if (layoutOverviewDataLayer) {
+        const bounds = layoutOverviewDataLayer.getBounds();
+        if (bounds && bounds.isValid()) {
+          layoutOverviewMap.fitBounds(bounds, { padding: [state.overviewPadding, state.overviewPadding] });
+        }
+      } else {
+        layoutOverviewMap.fitBounds(layoutMap.getBounds(), { padding: [state.overviewPadding, state.overviewPadding] });
+      }
       syncLayoutOverview();
     }
 
@@ -664,7 +684,8 @@
       const layoutOverviewEl = qs('layoutOverviewMap');
       if (!layoutMapEl || !layoutOverviewEl) return;
 
-      layoutMap = L.map(layoutMapEl, { zoomControl: false, attributionControl: false }).setView([31.3547, 34.3088], 11);
+      // إضافة preferCanvas لحل مشكلة اختفاء الطبقات عند التصدير
+      layoutMap = L.map(layoutMapEl, { zoomControl: false, attributionControl: false, preferCanvas: true }).setView([31.3547, 34.3088], 11);
       layoutOverviewMap = L.map(layoutOverviewEl, {
         zoomControl: false,
         attributionControl: false,
@@ -674,7 +695,8 @@
         boxZoom: false,
         keyboard: false,
         tap: false,
-        touchZoom: false
+        touchZoom: false,
+        preferCanvas: true
       }).setView([31.3547, 34.3088], 9);
 
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -1070,27 +1092,64 @@
       refs.layoutResetBtn.addEventListener('click', fullReset);
     }
 
-    if (refs.btnExportPDF) {
-      refs.btnExportPDF.addEventListener('click', async () => {
-        const originalText = refs.btnExportPDF.innerHTML;
-        refs.btnExportPDF.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
-        try {
-          if (typeof html2canvas === 'undefined') throw new Error('html2canvas not available');
-          const canvas = await html2canvas(layoutPaper, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
-          const link = document.createElement('a');
-          link.href = canvas.toDataURL('image/png');
-          link.download = 'map-layout-export.png';
-          link.click();
-          refs.btnExportPDF.innerHTML = '<i class="fa-solid fa-check text-lg"></i>';
-        } catch (err) {
-          console.error('Export error:', err);
-          refs.btnExportPDF.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-lg"></i>';
+    async function exportLayout(type) {
+      if (!refs.btnExportMenu) return;
+      const originalText = refs.btnExportMenu.innerHTML;
+      refs.btnExportMenu.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
+      
+      try {
+        const overlay = qs('layoutMapOverlay');
+        if (overlay) overlay.style.visibility = 'hidden';
+
+        if (type === 'pdf') {
+           if (typeof window.html2pdf === 'undefined') throw new Error('html2pdf not available');
+           const opt = {
+              margin: 0,
+              filename: `Map_Layout_${Date.now()}.pdf`,
+              image: { type: 'jpeg', quality: 1 },
+              html2canvas: { scale: 2, useCORS: true },
+              jsPDF: { unit: 'in', format: 'a3', orientation: 'landscape' }
+           };
+           await window.html2pdf().set(opt).from(layoutPaper).save();
+        } else {
+           if (typeof html2canvas === 'undefined') throw new Error('html2canvas not available');
+           const canvas = await html2canvas(layoutPaper, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+           
+           if (type === 'png') {
+              const link = document.createElement('a');
+              link.href = canvas.toDataURL('image/png');
+              link.download = `Map_Layout_${Date.now()}.png`;
+              link.click();
+           } else if (type === 'jpg') {
+              const link = document.createElement('a');
+              link.href = canvas.toDataURL('image/jpeg', 0.95);
+              link.download = `Map_Layout_${Date.now()}.jpg`;
+              link.click();
+           } else if (type === 'print') {
+              const dataUrl = canvas.toDataURL('image/png');
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`<html><head><title>${t('exportPrint')}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;background:#525659;"><img src="${dataUrl}" style="max-width:100%;height:auto;box-shadow:0 0 10px rgba(0,0,0,0.5);" onload="window.print();window.close();"/></body></html>`);
+              printWindow.document.close();
+           }
         }
-        setTimeout(() => {
-          refs.btnExportPDF.innerHTML = originalText;
-        }, 2000);
-      });
+        
+        if (overlay) overlay.style.visibility = '';
+        refs.btnExportMenu.innerHTML = '<i class="fa-solid fa-check text-lg text-emerald-300"></i>';
+      } catch (err) {
+        console.error('Export error:', err);
+        refs.btnExportMenu.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-lg text-red-300"></i>';
+        showToast('حدث خطأ أثناء التصدير', 'red');
+      }
+      
+      setTimeout(() => {
+        refs.btnExportMenu.innerHTML = originalText;
+      }, 2500);
     }
+
+    if (refs.btnExportPNG) refs.btnExportPNG.addEventListener('click', () => exportLayout('png'));
+    if (refs.btnExportJPG) refs.btnExportJPG.addEventListener('click', () => exportLayout('jpg'));
+    if (refs.btnExportPDF) refs.btnExportPDF.addEventListener('click', () => exportLayout('pdf'));
+    if (refs.btnExportPrint) refs.btnExportPrint.addEventListener('click', () => exportLayout('print'));
 
     if (refs.configToggleBtn) refs.configToggleBtn.addEventListener('click', () => toggleConfigPanel());
     if (refs.configCloseBtn) refs.configCloseBtn.addEventListener('click', () => toggleConfigPanel(false));
