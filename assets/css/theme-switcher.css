@@ -1,0 +1,268 @@
+/* ==================================
+   THEME SWITCHER & CORE VARIABLES
+   ================================== */
+:root {
+  /* Light Theme - Minimalist Studio */
+  --app-bg: #e2e8f0; /* Matched to loader background */
+  --text-main: #09090b;
+  --text-muted: #71717a;
+  --panel-bg: rgba(255, 255, 255, 0.8);
+  --panel-border: rgba(0, 0, 0, 0.08);
+  --ribbon-bg: #fafafa;
+  --ribbon-tab-active: #ffffff;
+  --accent-color: #000000;
+  --grid-color: rgba(0, 0, 0, 0.03);
+  --panel-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+}
+
+body[data-theme="dark"] {
+  /* Dark Theme - Midnight Slate Navy (Distinct from Black) */
+  --app-bg: #0f172a; 
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --panel-bg: rgba(30, 41, 59, 0.7);
+  --panel-border: rgba(255, 255, 255, 0.1);
+  --ribbon-bg: #1e293b;
+  --ribbon-tab-active: #0f172a;
+  --accent-color: #3b82f6;
+  --grid-color: rgba(255, 255, 255, 0.02);
+  --panel-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+body[data-theme="accent"] {
+  /* Super Dark Mode - Deep Infinity Black (Pitch Black) */
+  --app-bg: #000000;
+  --text-main: #ffffff;
+  --text-muted: #94a3b8;
+  --panel-bg: rgba(0, 0, 0, 0.8);
+  --panel-border: rgba(255, 255, 255, 0.2);
+  --ribbon-bg: #050505;
+  --ribbon-tab-active: #000000;
+  --accent-color: #ffffff;
+  --grid-color: rgba(255, 255, 255, 0.04);
+  --panel-shadow: 0 0 50px rgba(255, 255, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Background System - Pro Grid with Cinematic Gradients */
+#nebula-container {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--app-bg);
+  background-image: 
+    radial-gradient(at 0%   0%,   rgba(59, 130, 246, 0.2) 0, transparent 55%),
+    radial-gradient(at 50%  0%,   rgba(139, 92, 246, 0.15) 0, transparent 55%),
+    radial-gradient(at 100% 0%,   rgba(56, 189, 248, 0.2) 0, transparent 55%),
+    radial-gradient(at 0%   100%, rgba(99, 102, 241, 0.2) 0, transparent 55%),
+    radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.15) 0, transparent 55%),
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+  background-position: center center;
+  transition: all 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#nebula-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 30%, var(--app-bg) 100%);
+  pointer-events: none;
+  opacity: 0.6; /* Reduced to let gradients shine through */
+}
+
+/* Base Body Transitions */
+body#mainBody {
+  background-color: var(--app-bg) !important;
+  color: var(--text-main);
+  transition: background-color 0.8s ease-in-out, color 0.5s ease;
+}
+
+/* Overriding default Tailwind Light Colors to follow variables natively */
+body[data-theme="dark"] .glass-panel, 
+body[data-theme="accent"] .glass-panel {
+  background-color: var(--panel-bg) !important;
+  border-color: var(--panel-border) !important;
+  color: var(--text-main) !important;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3) !important;
+}
+
+body[data-theme="dark"] .text-gray-800,
+body[data-theme="accent"] .text-gray-800,
+body[data-theme="dark"] .text-gray-700,
+body[data-theme="accent"] .text-gray-700 {
+  color: var(--text-main) !important;
+}
+
+body[data-theme="dark"] .text-gray-500,
+body[data-theme="dark"] .text-gray-600,
+body[data-theme="accent"] .text-gray-500,
+body[data-theme="accent"] .text-gray-600 {
+  color: var(--text-muted) !important;
+}
+
+/* ==================================
+   LIQUID GLASS SWITCHER UI
+   ================================== */
+.liquid-switcher-container {
+  position: fixed;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100000;
+}
+
+/* تمت إزالة التنسيقات القديمة للمبدّل الثلاثي لتبسيط الكود واعتماد الزر الموحد */
+
+/* ==================================
+   ARCGIS PRO RIBBON UI
+   ================================== */
+.arcgis-ribbon {
+  width: 100%;
+  background-color: var(--ribbon-bg);
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  transition: all 0.5s ease;
+  overflow-x: auto;
+}
+
+.ribbon-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 10px 0;
+  background-color: rgba(0,0,0,0.02);
+}
+
+.ribbon-tab {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+}
+
+.ribbon-tab.active {
+  background-color: var(--ribbon-tab-active);
+  color: var(--text-main);
+  border-color: var(--panel-border);
+}
+
+.ribbon-toolbar {
+  display: flex;
+  background-color: var(--ribbon-tab-active);
+  padding: 4px 8px;
+  min-height: 80px;
+  align-items: stretch;
+}
+
+.ribbon-group {
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: 0 12px;
+}
+
+/* Separator between groups */
+.ribbon-group:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 0; /* RTL so left is end */
+  top: 10%;
+  height: 80%;
+  width: 1px;
+  background-color: var(--panel-border);
+  opacity: 0.6;
+}
+
+/* Group Name */
+.ribbon-group::before {
+  content: attr(data-group-name);
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.ribbon-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 50px;
+  padding: 4px 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  height: 60px;
+  transition: all 0.2s;
+}
+
+.ribbon-btn:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.ribbon-btn i {
+  font-size: 20px;
+  margin-bottom: 4px;
+  color: #3b82f6;
+}
+
+/* Distinctive Icons Colors like ArcGIS */
+.ribbon-btn.action-primary i { color: #10b981; } /* Green */
+.ribbon-btn.action-danger i { color: #f43f5e; } /* Red */
+.ribbon-btn.action-warn i { color: #f59e0b; } /* Orange */
+
+.ribbon-btn-text {
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* Smaller side-by-side buttons */
+.ribbon-sub-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  height: 60px;
+  margin: 0 4px;
+}
+
+.ribbon-small-btn {
+  display: flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.ribbon-small-btn:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.ribbon-small-btn i {
+  font-size: 14px;
+  margin-left: 6px;
+}

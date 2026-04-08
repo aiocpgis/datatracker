@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - الصفحة غير موجودة</title>
+    
+    <!-- Google Fonts: Cairo -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Animate.css -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+
+    <!-- External Styles -->
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/theme-switcher.css">
+
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .error-container {
+            position: relative;
+            z-index: 10;
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+            padding: 3rem;
+            border-radius: 2.5rem;
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
+            animation: fadeInContainer 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        @keyframes fadeInContainer {
+            from { opacity: 0; transform: translateY(30px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .error-code {
+            font-size: 8rem;
+            font-weight: 900;
+            line-height: 1;
+            background: linear-gradient(135deg, #1d4ed8, #3b82f6, #60a5fa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            filter: drop-shadow(0 10px 15px rgba(59, 130, 246, 0.2));
+            animation: pulseCode 3s ease-in-out infinite;
+        }
+
+        @keyframes pulseCode {
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 10px 15px rgba(59, 130, 246, 0.2)); }
+            50% { transform: scale(1.05); filter: drop-shadow(0 15px 25px rgba(59, 130, 246, 0.4)); }
+        }
+
+        .map-marker-pulse {
+            width: 80px;
+            height: 80px;
+            background: rgba(37, 99, 235, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 2rem;
+            position: relative;
+        }
+
+        .map-marker-pulse i {
+            font-size: 2.5rem;
+            color: #2563eb;
+            z-index: 2;
+        }
+
+        .marker-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 2px solid rgba(37, 99, 235, 0.3);
+            animation: ringPulse 2s infinite;
+        }
+
+        @keyframes ringPulse {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        .cta-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            font-weight: 800;
+            padding: 1rem 2.5rem;
+            border-radius: 1.25rem;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.4);
+            text-decoration: none;
+            margin-top: 2rem;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 15px 30px -5px rgba(37, 99, 235, 0.6);
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+        }
+
+        .cta-button:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        /* Dark Mode Support */
+        body[data-theme="dark"] .error-container,
+        body[data-theme="accent"] .error-container {
+            background: rgba(15, 23, 42, 0.6);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        body[data-theme="dark"] .error-code,
+        body[data-theme="accent"] .error-code {
+            background: linear-gradient(135deg, #60a5fa, #93c5fd);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body id="mainBody">
+    <!-- Nebula Background System -->
+    <div id="nebula-container">
+        <div class="nebula-layer"></div>
+    </div>
+
+    <div class="error-container">
+        <div class="map-marker-pulse">
+            <i class="fa-solid fa-location-dot"></i>
+            <div class="marker-ring"></div>
+            <div class="marker-ring" style="animation-delay: 0.5s"></div>
+        </div>
+
+        <h1 class="error-code">404</h1>
+        
+        <h2 class="text-3xl font-black text-gray-800 mb-4 tracking-tight">عذرًا، الإحداثيات مفقودة!</h2>
+        
+        <p class="text-lg text-gray-600 font-bold leading-relaxed mb-8">
+            يبدو أن الصفحة التي تبحث عنها قد تم نقلها أو أنها غير موجودة في قاعدة بياناتنا الجغرافية حالياً.
+        </p>
+
+        <a href="index.html" class="cta-button">
+            <i class="fa-solid fa-house-chimney"></i>
+            العودة للوحة الرئيسية
+        </a>
+        
+        <div class="mt-12 pt-8 border-t border-gray-200/50 flex flex-col items-center gap-2">
+            <p class="text-xs font-black text-blue-700 bg-blue-100/70 backdrop-blur px-4 py-1.5 rounded-full border border-blue-200 shadow-sm inline-flex items-center gap-2">
+                <i class="fa-solid fa-layer-group"></i> قسم نظم المعلومات الجغرافية (GIS)
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Use theme from localStorage if exists
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.setAttribute('data-theme', savedTheme);
+    </script>
+</body>
+</html>
