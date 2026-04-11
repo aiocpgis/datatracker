@@ -1,4 +1,6 @@
 let chartsInitialized = false; 
+const geoJsonLayers = { gov: null, zone: null, road: null };
+window.geoJsonLayers = geoJsonLayers;
 
         // دالة عرض التنبيهات (Toasts)
         function showToast(message, type = 'blue') {
@@ -401,6 +403,56 @@ let chartsInitialized = false;
             });
         }
 
+
+        function isObserverLikeRole(user) {
+            const roleValue = String(user?.role || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[أإآا]/g, 'ا')
+                .replace(/ة/g, 'ه')
+                .replace(/ى/g, 'ي');
+            return ['مراقب', 'observer', 'viewer', 'monitor', 'read only', 'readonly'].includes(roleValue);
+        }
+
+        function getInitialLandingPageId() {
+            const currentUser = window.currentUser || null;
+
+            if (isObserverLikeRole(currentUser)) {
+                const flowBtn = document.getElementById('nav-flow');
+                if (flowBtn && flowBtn.style.display !== 'none') {
+                    return 'flow';
+                }
+            }
+
+            const navToPageMap = [
+                { navId: 'nav-home', pageId: 'home' },
+                { navId: 'nav-stats', pageId: 'process' },
+                { navId: 'nav-flow', pageId: 'flow' },
+                { navId: 'nav-style', pageId: 'style' },
+                { navId: 'nav-personas', pageId: 'personas' },
+                { navId: 'nav-users', pageId: 'users' }
+            ];
+
+            const firstVisible = navToPageMap.find(({ navId }) => {
+                const el = document.getElementById(navId);
+                return el && el.style.display !== 'none' && !el.classList.contains('hidden');
+            });
+
+            return firstVisible?.pageId || 'home';
+        }
+
+        function getNavButtonByPageId(pageId) {
+            const pageToNavMap = {
+                home: 'nav-home',
+                process: 'nav-stats',
+                flow: 'nav-flow',
+                style: 'nav-style',
+                personas: 'nav-personas',
+                users: 'nav-users'
+            };
+            return document.getElementById(pageToNavMap[pageId] || 'nav-home');
+        }
+
         function hideLoader() {
             const loader = document.getElementById('loader');
             if (!loader) return;
@@ -418,13 +470,19 @@ let chartsInitialized = false;
             loader.style.pointerEvents = 'none';
             setTimeout(() => {
                 loader.style.display = 'none';
-                // Only default to home if no other page is active
+                // اختر الصفحة الابتدائية حسب صلاحيات المستخدم بدل فرض المحرر دائماً
                 const activePage = document.querySelector('.page.active');
                 if (!activePage) {
-                    const homePage = document.getElementById('home');
-                    if (homePage) homePage.classList.add('active');
-                    const activeBtn = document.querySelector('.nav-btn.active');
-                    if(activeBtn) updateNavIndicator(activeBtn);
+                    const initialPageId = getInitialLandingPageId();
+                    const initialBtn = getNavButtonByPageId(initialPageId);
+                    if (initialBtn && typeof switchPage === 'function') {
+                        switchPage(initialPageId, initialBtn);
+                    } else {
+                        const fallbackPage = document.getElementById(initialPageId || 'home');
+                        if (fallbackPage) fallbackPage.classList.add('active');
+                        document.body.classList.remove('page-home', 'page-stats', 'page-flow', 'page-users', 'page-personas');
+                        document.body.classList.add('page-' + (initialPageId || 'home'));
+                    }
                 }
                 const topNav = document.getElementById('mainNav');
                 if (topNav) topNav.classList.add('animate__animated', 'animate__fadeIn');
@@ -553,8 +611,10 @@ let chartsInitialized = false;
                 setTimeout(() => updateNavIndicator(activeBtn), 500);
             }
 
-            // إضافة كلاس الصفحة الافتراضية للجسم لضمان ظهور العناصر الجانبية
-            document.body.classList.add('page-home');
+            // إضافة كلاس الصفحة الابتدائية حسب الصلاحية وليس دائماً صفحة المحرر
+            const initialPageId = getInitialLandingPageId();
+            document.body.classList.remove('page-home', 'page-stats', 'page-flow', 'page-users', 'page-personas');
+            document.body.classList.add('page-' + initialPageId);
         });
 
         // 2. تحديث موقع المؤشر الزجاجي
@@ -1115,11 +1175,10 @@ let chartsInitialized = false;
             }
 
             // تحميل وإدارة طبقات GeoJSON المحلية
-            const geoJsonLayers = {
-                gov: null,
-                zone: null,
-                road: null
-            };
+            geoJsonLayers.gov = null;
+            geoJsonLayers.zone = null;
+            geoJsonLayers.road = null;
+            window.geoJsonLayers = geoJsonLayers;
             const canEditMap = canEditMapForCurrentUser();
 
             // إيقاف وتجاهل أدوات Geoman الافتراضية

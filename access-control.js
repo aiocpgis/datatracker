@@ -224,6 +224,23 @@
     }
   }
 
+  function isObserverRole() {
+    const roleValue = normalizeArabic(currentUser?.role || '');
+    return ['مراقب', 'observer', 'viewer', 'monitor', 'read only', 'readonly'].includes(roleValue);
+  }
+
+  function applyObserverDisplayMode() {
+    if (!isObserverRole()) return;
+
+    hideElement('#nav-home');
+    hideElement('#nav-users');
+    hideElement('#toggleEditBtn, #toggleAdminBtn, #toggleExportBtn');
+    hideElement('#editPanel, #adminPanel, #exportPanel');
+
+    const attrPanel = document.getElementById('attributesPanel');
+    if (attrPanel) attrPanel.classList.add('hidden-panel');
+  }
+
   function applyUIPermissions() {
     if (!currentUser) return;
 
@@ -267,6 +284,25 @@
       }
     });
 
+    const canDraw = permissionValue('canDraw', false);
+    const canEditGeometry = permissionValue('canEditGeometry', false);
+    const canDeleteGeometry = permissionValue('canDeleteGeometry', false);
+
+    if (!canDraw && !canEditGeometry && !canDeleteGeometry) {
+      hideElement('#toggleEditBtn');
+      hideElement('#editPanel');
+    }
+
+    if (!permissionValue('canManageUsers', false)) {
+      hideElement('#toggleAdminBtn');
+      hideElement('#adminPanel');
+    }
+
+    if (!permissionValue('canExport', false)) {
+      hideElement('#toggleExportBtn');
+      hideElement('#exportPanel');
+    }
+
     const canEditData = permissionValue('canEditData', false);
     const canEditStatus = permissionValue('canEditStatus', false);
 
@@ -301,6 +337,8 @@
       hideElement('#btnExportPDF');
       hideElement('#btnExportExcel');
     }
+
+    applyObserverDisplayMode();
 
     const statsCompareBy = document.getElementById('statsCompareBy');
     if (statsCompareBy) applyGovernorateSelectorLock(statsCompareBy);
