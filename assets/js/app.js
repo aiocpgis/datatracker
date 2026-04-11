@@ -118,13 +118,16 @@ let chartsInitialized = false;
 
         // دالة موحدة لتنسيق الزونات بناءً على حالة الحصر
         function getZoneStyle(feature) {
-            const status = feature.properties["حالة الحصر"] || feature.properties["type_statu"] || feature.properties["حالة_الحصر"] || feature.properties.Status || "";
-            let color = '#94a3b8'; // رمادي (غير معروف)
-            
-            if (status.includes('جديدة')) color = '#3b82f6'; // أزرق
-            else if (status.includes('الحصر') || status.includes('العمل')) color = '#eab308'; // أصفر
-            else if (status.includes('الانتهاء') || status.includes('مكتمل')) color = '#22c55e'; // أخضر
-            
+            const status = getFeatureStatus(feature?.properties || {});
+            let color = getZoneStatusColor(status);
+
+            if (!status || color === '#64748b') {
+                if (status.includes('جديدة')) color = '#3b82f6';
+                else if (status.includes('الحصر') || status.includes('العمل')) color = '#eab308';
+                else if (status.includes('الانتهاء') || status.includes('مكتمل')) color = '#22c55e';
+                else color = '#94a3b8';
+            }
+
             return {
                 color: color,
                 weight: 1.5,
@@ -149,35 +152,164 @@ let chartsInitialized = false;
             return value || 'all';
         }
 
+        const DEFAULT_ZONE_STATUSES = [
+            { label: 'مناطق حصر جديدة', color: '#3b82f6', order: 1, active: true },
+            { label: 'قيد الحصر', color: '#eab308', order: 2, active: true },
+            { label: 'تم الانتهاء', color: '#22c55e', order: 3, active: true }
+        ];
+        const ZONE_STATUS_COLOR_PALETTE = ['#8b5cf6', '#f97316', '#14b8a6', '#ec4899', '#6366f1', '#84cc16', '#ef4444', '#06b6d4'];
+        let zoneStatusOptions = [...DEFAULT_ZONE_STATUSES];
+        let zoneStatusesInitialized = false;
+        let zoneStatusListenerBound = false;
+
+        function normalizeZoneStatusEntry(item, index = 0) {
+            return {
+                label: String(item?.label || '').trim(),
+                color: item?.color || '#64748b',
+                order: Number.isFinite(item?.order) ? item.order : index + 1,
+                active: item?.active !== false
+            };
+        }
+
+        function getOrderedZoneStatuses() {
+            return (zoneStatusOptions || [])
+                .map((item, index) => normalizeZoneStatusEntry(item, index))
+                .filter(item => item.label)
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+        }
+
+        function getZoneStatusLabels() {
+            return getOrderedZoneStatuses()
+                .filter(item => item.active !== false)
+                .map(item => item.label);
+        }
+
+        function getZoneStatusConfig(label) {
+            const normalizedLabel = String(label || '').trim();
+            return getOrderedZoneStatuses().find(item => item.label === normalizedLabel) || null;
+        }
+
+        function getZoneStatusColor(label) {
+            const found = getZoneStatusConfig(label);
+            return found?.color || '#64748b';
+        }
+
+        function getFeatureStatus(props = {}) {
+            return String(props['حالة الحصر'] || props['type_statu'] || props['حالة_الحصر'] || props.Status || '').trim();
+        }
+
+        function getAllKnownZoneStatusesFromFeatures(features = []) {
+            const labels = new Set(getZoneStatusLabels());
+            (features || []).forEach(feature => {
+                const status = getFeatureStatus(feature?.properties || {});
+                if (status) labels.add(status);
+            });
+            return Array.from(labels);
+        }
+
+        function pickNextZoneStatusColor(items = []) {
+            const used = new Set((items || []).map(item => item?.color).filter(Boolean));
+            const available = ZONE_STATUS_COLOR_PALETTE.find(color => !used.has(color));
+            return available || ZONE_STATUS_COLOR_PALETTE[(items.length || 0) % ZONE_STATUS_COLOR_PALETTE.length];
+        }
+
+        function renderZoneStatusFilterOptions() {
+            const select = document.getElementById('filterZoneStatus');
+            if (!select) return;
+            const currentValue = select.value || 'all';
+            const labels = getZoneStatusLabels();
+            select.innerHTML = '<option value="all">كل الحالات</option>';
+            labels.forEach(label => {
+                const option = document.createElement('option');
+                option.value = label;
+                option.textContent = label;
+                select.appendChild(option);
+            });
+            select.value = labels.includes(currentValue) || currentValue === 'all' ? currentValue : 'all';
+        }
+
+        function buildMapLegendItemsHtml() {
+            const labels = getZoneStatusLabels();
+            const items = labels.length ? labels : DEFAULT_ZONE_STATUSES.map(item => item.label);
+            return items.map(label => `
+                <div class="legend-item">
+                    <span class="legend-swatch" style="background: ${getZoneStatusColor(label)};"></span>
+                    <span>${label}</span>
+                </div>
+            `).join('') + `
+                <div class="legend-item">
+                    <span class="legend-swatch" style="background: #94a3b8;"></span>
+                    <span>غير محدد</span>
+                </div>
+            `;
+        }
+
+        async function bootstrapZoneStatuses() {
+            if (zoneStatusesInitialized) return;
+            zoneStatusesInitialized = true;
+
+            try {
+                if (window.loadZoneStatuses) {
+                    const remoteItems = await window.loadZoneStatuses();
+                    if (Array.isArray(remoteItems) && remoteItems.length) {
+                        zoneStatusOptions = remoteItems.map((item, index) => normalizeZoneStatusEntry(item, index)).filter(item => item.label);
+                    }
+                }
+            } catch (error) {
+                console.warn('Unable to bootstrap zone statuses:', error);
+            }
+
+            renderZoneStatusFilterOptions();
+            injectMapLegend('gazaMapWrapper');
+            injectMapLegend('viewMapWrapper');
+
+            if (window.listenToZoneStatuses && !zoneStatusListenerBound) {
+                zoneStatusListenerBound = true;
+                window.listenToZoneStatuses((items) => {
+                    zoneStatusOptions = Array.isArray(items) && items.length
+                        ? items.map((item, index) => normalizeZoneStatusEntry(item, index)).filter(item => item.label)
+                        : [...DEFAULT_ZONE_STATUSES];
+                    renderZoneStatusFilterOptions();
+                    injectMapLegend('gazaMapWrapper');
+                    injectMapLegend('viewMapWrapper');
+
+                    if (geoJsonLayers?.zone) {
+                        geoJsonLayers.zone.eachLayer(layer => {
+                            if (layer.setStyle && layer.feature) layer.setStyle(getZoneStyle(layer.feature));
+                        });
+                    }
+                    if (window.viewMapInstance && typeof window.viewMapInstance.eachLayer === 'function') {
+                        window.viewMapInstance.eachLayer(layer => {
+                            if (layer.feature && layer.setStyle) layer.setStyle(getZoneStyle(layer.feature));
+                        });
+                    }
+                    if (window.zoneGeoJsonData?.features) {
+                        processZoneStatistics(filterFeaturesForCurrentUser(window.zoneGeoJsonData.features || []));
+                    }
+                });
+            }
+        }
+
+        window.getFeatureStatus = getFeatureStatus;
+        window.getZoneStatusColor = getZoneStatusColor;
+        window.getZoneStatusOptions = () => getOrderedZoneStatuses();
+
         // دالة لحقن مفتاح الخريطة برمجياً
         function injectMapLegend(containerId) {
             const container = document.getElementById(containerId);
             if (!container) return;
-            
-            // إذا كان المفتاح موجوداً بالفعل، لا تكرره
-            if (container.querySelector('.map-legend')) return;
+
+            const existingLegend = container.querySelector('.map-legend');
+            if (existingLegend) {
+                const list = existingLegend.querySelector('.legend-list');
+                if (list) list.innerHTML = buildMapLegendItemsHtml();
+                return;
+            }
 
             const legendHtml = `
                 <div class="map-legend glass-panel p-3 rounded-xl shadow-lg border-white/40">
                     <h5 class="legend-header">مفتاح الخريطة</h5>
-                    <div class="legend-list">
-                        <div class="legend-item">
-                            <span class="legend-swatch" style="background: #3b82f6;"></span>
-                            <span>مناطق حصر جديدة</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-swatch" style="background: #eab308;"></span>
-                            <span>قيد الحصر</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-swatch" style="background: #22c55e;"></span>
-                            <span>تم الانتهاء</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-swatch" style="background: #94a3b8;"></span>
-                            <span>غير محدد</span>
-                        </div>
-                    </div>
+                    <div class="legend-list">${buildMapLegendItemsHtml()}</div>
                 </div>
             `;
             container.insertAdjacentHTML('beforeend', legendHtml);
@@ -514,11 +646,10 @@ let chartsInitialized = false;
             
             // تصنيفات حسب المحافظة "Gov" وحسب حالة الحصر
             let govStats = {};
-            let statusDistribution = {
-                'مناطق حصر جديدة': 0,
-                'قيد الحصر': 0,
-                'تم الانتهاء': 0
-            };
+            let statusDistribution = {};
+            getZoneStatusLabels().forEach(label => {
+                statusDistribution[label] = 0;
+            });
 
             filteredFeatures.forEach(f => {
                 let p = f.properties || {};
@@ -528,7 +659,7 @@ let chartsInitialized = false;
                 let teams = parseInt(p["عدد الفرق"]) || parseInt(p["teams_coun"]) || parseInt(p["عدد_الفرق"]) || 0;
                 let eng = parseInt(p["عدد المهندسين"]) || parseInt(p["engineers_"]) || parseInt(p["عدد_المهندسين"]) || 0;
                 let gov = p["governorat"] || p["Gov"] ? (p["governorat"] || p["Gov"]).trim() : "غير محدد";
-                let status = p["حالة الحصر"] || p["type_statu"] || p["حالة_الحصر"] || p.Status || "";
+                let status = getFeatureStatus(p);
                 
                 totalBldg += bldg;
                 totalCompleted += comp;
@@ -537,9 +668,12 @@ let chartsInitialized = false;
                 totalEng += eng;
 
                 // تحديث توزيع الحالة
-                if (status.includes('جديدة')) statusDistribution['مناطق حصر جديدة']++;
-                else if (status.includes('الحصر') || status.includes('العمل')) statusDistribution['قيد الحصر']++;
-                else if (status.includes('الانتهاء') || status.includes('مكتمل')) statusDistribution['تم الانتهاء']++;
+                if (status) {
+                    if (!Object.prototype.hasOwnProperty.call(statusDistribution, status)) {
+                        statusDistribution[status] = 0;
+                    }
+                    statusDistribution[status]++;
+                }
 
                 if(!govStats[gov]) govStats[gov] = {bldg: 0, completed: 0, units: 0, teams: 0, eng: 0};
                 govStats[gov].bldg += bldg;
@@ -923,17 +1057,15 @@ let chartsInitialized = false;
 
             // Chart 6: Survey Status Breakdown (Doughnut)
             const ctxStatus = document.getElementById('statusChart').getContext('2d');
+            const statusEntries = Object.entries(stats.status || {}).filter(([, value]) => Number(value) > 0);
+            const finalStatusEntries = statusEntries.length ? statusEntries : Object.entries(stats.status || {});
             window.analyticsCharts['statusChart'] = new Chart(ctxStatus, {
                 type: 'pie',
                 data: {
-                    labels: Object.keys(stats.status),
+                    labels: finalStatusEntries.map(([label]) => label),
                     datasets: [{
-                        data: Object.values(stats.status),
-                        backgroundColor: [
-                            '#3b82f6', // مناطق حصر جديدة (أزرق)
-                            '#eab308', // قيد الحصر (أصفر)
-                            '#22c55e'  // تم الانتهاء (أخضر)
-                        ],
+                        data: finalStatusEntries.map(([, value]) => value),
+                        backgroundColor: finalStatusEntries.map(([label]) => getZoneStatusColor(label) || '#94a3b8'),
                         borderWidth: 2,
                         borderColor: '#ffffff'
                     }]
@@ -1228,6 +1360,8 @@ let chartsInitialized = false;
 
             // دالة جلب البيانات الرسمية والمخصصة
             async function loadMasterGeoJsonData() {
+                await bootstrapZoneStatuses();
+
                 // 1. جلب المحافظات (غالباً ثابتة)
                 fetch('gov.geojson').then(r => r.json()).then(data => {
                     if (geoJsonLayers.gov) map.removeLayer(geoJsonLayers.gov);
@@ -1318,6 +1452,15 @@ let chartsInitialized = false;
                                                 layer.setStyle(getZoneStyle(layer.feature));
                                             }
                                         }
+                                    }
+                                });
+                            }
+
+                            if (dataChanged && window.zoneGeoJsonData?.features) {
+                                window.zoneGeoJsonData.features.forEach(feature => {
+                                    const code = feature.properties?.zone_code || feature.properties?.area_code || feature.properties?.work_id || feature.id;
+                                    if (code && updates[code]) {
+                                        Object.assign(feature.properties, updates[code]);
                                     }
                                 });
                             }
@@ -1734,7 +1877,7 @@ let chartsInitialized = false;
                         String(props.zone_code || '').toLowerCase().includes(query) ||
                         String(props.work_id || '').toLowerCase().includes(query) ||
                         String(props.area_code || '').toLowerCase().includes(query);
-                    let mStatus = status === 'all' || props.type_statu === status;
+                    let mStatus = status === 'all' || getFeatureStatus(props) === status;
                     let mGov = govVal === 'all' || props.governorat === govVal;
                     let mMuni = muniVal === 'all' || props.municipali === muniVal;
                     let mNeigh = neighVal === 'all' || props.neighborho === neighVal;
@@ -2064,7 +2207,6 @@ let chartsInitialized = false;
             let lastSavedProperties = null;
             let lastSelectedFeatureKey = null;
 
-            const statusOptions = ['مناطق حصر جديدة', 'قيد الحصر', 'تم الانتهاء'];
             const statusFieldNames = ['حالة الحصر', 'type_statu', 'حالة_الحصر', 'Status'];
             const reservedFields = ['OBJECTID', 'OBJECTID_1', 'Shape_Area', 'Shape_Length'];
 
@@ -2162,19 +2304,88 @@ let chartsInitialized = false;
                 keyWrapper.appendChild(removeButton);
                 row.appendChild(keyWrapper);
 
+                function createStatusControl(fieldValue) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'flex items-center gap-2';
+                    wrapper.dataset.fieldValueInput = 'true';
+
+                    const select = document.createElement('select');
+                    select.className = 'w-full px-4 py-3 rounded-xl bg-white border border-gray-300 text-gray-700 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all';
+                    select.dataset.fieldValueInput = 'true';
+
+                    const labels = getZoneStatusLabels();
+                    if (fieldValue && !labels.includes(fieldValue)) {
+                        labels.push(fieldValue);
+                    }
+
+                    labels.forEach(option => {
+                        const opt = document.createElement('option');
+                        opt.value = option;
+                        opt.textContent = option;
+                        if (option === fieldValue) opt.selected = true;
+                        select.appendChild(opt);
+                    });
+
+                    const addBtn = document.createElement('button');
+                    addBtn.type = 'button';
+                    addBtn.className = 'px-3 py-3 rounded-xl bg-blue-600 text-white text-xs font-bold whitespace-nowrap hover:bg-blue-700 transition-colors';
+                    addBtn.innerHTML = '<i class="fa-solid fa-plus ml-1"></i>نوع جديد';
+
+                    addBtn.addEventListener('click', async () => {
+                        const newLabel = String(prompt('أدخل اسم نوع الحصر الجديد') || '').trim();
+                        if (!newLabel) return;
+
+                        const exists = getOrderedZoneStatuses().some(item => item.label === newLabel);
+                        if (!exists) {
+                            const nextStatuses = [
+                                ...getOrderedZoneStatuses(),
+                                {
+                                    label: newLabel,
+                                    color: pickNextZoneStatusColor(zoneStatusOptions),
+                                    order: getOrderedZoneStatuses().length + 1,
+                                    active: true
+                                }
+                            ];
+
+                            if (window.saveZoneStatuses) {
+                                const result = await window.saveZoneStatuses(nextStatuses);
+                                if (!result?.success) {
+                                    showToast('فشل حفظ نوع الحصر الجديد', 'red');
+                                    return;
+                                }
+                                zoneStatusOptions = (result.items || nextStatuses).map((item, index) => normalizeZoneStatusEntry(item, index)).filter(item => item.label);
+                                if (result.localOnly) {
+                                    showToast('تمت إضافة النوع محلياً فقط، افحص قواعد Firebase', 'warning');
+                                } else {
+                                    showToast('تمت إضافة نوع الحصر وربطه بالنظام', 'success');
+                                }
+                            } else {
+                                zoneStatusOptions = nextStatuses;
+                                showToast('تمت إضافة نوع الحصر محلياً', 'warning');
+                            }
+                        }
+
+                        renderZoneStatusFilterOptions();
+                        injectMapLegend('gazaMapWrapper');
+                        injectMapLegend('viewMapWrapper');
+
+                        if (!Array.from(select.options).some(opt => opt.value === newLabel)) {
+                            const opt = document.createElement('option');
+                            opt.value = newLabel;
+                            opt.textContent = newLabel;
+                            select.appendChild(opt);
+                        }
+                        select.value = newLabel;
+                    });
+
+                    wrapper.appendChild(select);
+                    wrapper.appendChild(addBtn);
+                    return wrapper;
+                }
+
                 function createValueControl(fieldKey, fieldValue) {
                     if (isStatusField(fieldKey)) {
-                        const select = document.createElement('select');
-                        select.className = 'w-full px-4 py-3 rounded-xl bg-white border border-gray-300 text-gray-700 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all';
-                        select.dataset.fieldValueInput = 'true';
-                        statusOptions.forEach(option => {
-                            const opt = document.createElement('option');
-                            opt.value = option;
-                            opt.textContent = option;
-                            if (option === fieldValue) opt.selected = true;
-                            select.appendChild(opt);
-                        });
-                        return select;
+                        return createStatusControl(fieldValue);
                     }
                     const valueInput = document.createElement('input');
                     valueInput.type = 'text';
@@ -2188,9 +2399,12 @@ let chartsInitialized = false;
                 let valueControl = createValueControl(key, value);
                 keyInput.addEventListener('change', () => {
                     const fieldKey = keyInput.value.trim();
-                    const previousValue = valueControl.value || '';
+                    const previousSelect = valueControl.matches?.('select') ? valueControl : valueControl.querySelector?.('select');
+                    const previousValue = previousSelect ? previousSelect.value : (valueControl.value || '');
                     const nextControl = createValueControl(fieldKey, previousValue);
-                    if (nextControl.tagName !== valueControl.tagName || fieldKey === 'type_statu' || fieldKey === 'حالة_الحصر' || fieldKey === 'Status') {
+                    const currentTag = valueControl.matches?.('select') ? 'select' : valueControl.tagName.toLowerCase();
+                    const nextTag = nextControl.matches?.('select') ? 'select' : nextControl.tagName.toLowerCase();
+                    if (nextTag !== currentTag || isStatusField(fieldKey)) {
                         row.replaceChild(nextControl, valueControl);
                         valueControl = nextControl;
                     }
@@ -2251,7 +2465,7 @@ let chartsInitialized = false;
                 updateUndoButtonVisibility();
 
                 const isAdmin = window.currentUser && window.currentUser.role === 'admin';
-                const restrictedFields = ['type_statu', 'engineers_', 'teams_coun', 'unit_count'];
+                const restrictedFields = ['type_statu', 'حالة الحصر', 'حالة_الحصر', 'Status', 'engineers_', 'عدد المهندسين', 'عدد_المهندسين', 'teams_coun', 'عدد الفرق', 'عدد_الفرق', 'unit_count', 'عدد الوحدات', 'عدد_الوحدات'];
 
                 Object.keys(props).forEach(key => {
                     if (reservedFields.includes(key)) return;
@@ -2309,9 +2523,13 @@ let chartsInitialized = false;
                         const fieldKey = keyInput.value.trim();
                         if (!fieldKey) return;
 
+                        const nestedSelect = valueControl.matches?.('select')
+                            ? valueControl
+                            : valueControl.querySelector?.('select');
+
                         let fieldValue = '';
-                        if (valueControl.tagName.toLowerCase() === 'select') {
-                            fieldValue = valueControl.value;
+                        if (nestedSelect) {
+                            fieldValue = nestedSelect.value;
                         } else {
                             fieldValue = valueControl.value;
                         }
@@ -2365,6 +2583,9 @@ let chartsInitialized = false;
                     if (currentSelectedLayer.setStyle) {
                         currentSelectedLayer.setStyle(getZoneStyle(currentSelectedLayer.feature));
                     }
+                    renderZoneStatusFilterOptions();
+                    injectMapLegend('gazaMapWrapper');
+                    injectMapLegend('viewMapWrapper');
                     if (window.zoneGeoJsonData && Array.isArray(window.zoneGeoJsonData.features)) {
                         try {
                             processZoneStatistics(filterFeaturesForCurrentUser(window.zoneGeoJsonData.features || []));
@@ -2866,7 +3087,7 @@ let chartsInitialized = false;
                        if (selectedGov !== 'all' && currentGov !== selectedGov) return;
 
                        totalZones++;
-                       const status = props.Status || props.type_statu || '';
+                       const status = getFeatureStatus(props);
                        if (status.includes('الانتهاء') || status.includes('مكتمل')) completed++;
                        else if (status.includes('الحصر') || status.includes('العمل')) inProgress++;
                        else notStarted++;

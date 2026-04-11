@@ -40,7 +40,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
         import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
         import { firebaseConfig } from './firebase-config.js';
-        import { initializeFirebase, saveZoneUpdate, loadAllZoneUpdates, getAllUsers, saveUserToFirestore, deleteUserFromFirestore, signOutUser } from './firebase-operations.js';
+        import { initializeFirebase, saveZoneUpdate, loadAllZoneUpdates, getAllUsers, saveUserToFirestore, deleteUserFromFirestore, signOutUser, loadZoneStatuses, saveZoneStatuses, listenToZoneStatuses, syncLoginIndex } from './firebase-operations.js';
 
         const app = initializeApp(firebaseConfig);
         window.db = getFirestore(app);
@@ -51,6 +51,10 @@
         window.saveUserToFirestore = saveUserToFirestore;
         window.deleteUserFromFirestore = deleteUserFromFirestore;
         window.signOutUser = signOutUser;
+        window.loadZoneStatuses = loadZoneStatuses;
+        window.saveZoneStatuses = saveZoneStatuses;
+        window.listenToZoneStatuses = listenToZoneStatuses;
+        window.syncLoginIndex = syncLoginIndex;
 
         // إعداد الاستماع اللحظي (Real-time) لتحديثات الزونات من Firebase
         window.listenToZoneUpdates = function(callback) {
@@ -65,6 +69,16 @@
                 console.error("Realtime listener error:", error);
             });
         };
+
+        if (window.currentUser && (window.currentUser.role === 'admin' || window.currentUser.canManageUsers === true)) {
+            window.firebaseInit.then(async () => {
+                try {
+                    await syncLoginIndex();
+                } catch (error) {
+                    console.warn('Login index sync skipped:', error);
+                }
+            });
+        }
     </script>
 
     <script src="assets/js/tailwind-config.js"></script>

@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDocExists() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.token.email));
+    }
+
+    function isAdmin() {
+      return userDocExists() &&
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin';
+    }
+
+    function canManageUsers() {
+      return userDocExists() && (
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.canManageUsers == true
+      );
+    }
+
+    function canEditZones() {
+      return userDocExists() && (
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.canEditStatus == true ||
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.canEditData == true
+      );
+    }
+
+    match /login_index/{username} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if canManageUsers();
+    }
+
+    match /app_config/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /zone_updates/{zoneId} {
+      allow read: if signedIn();
+      allow write: if canEditZones();
+    }
+
+    match /drawn_features/{featureId} {
+      allow read: if signedIn();
+      allow write: if canEditZones();
+    }
+
+    match /master_data/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

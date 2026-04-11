@@ -35,11 +35,16 @@
   }
 
   function getZoneStyle(feature) {
-    const status = feature?.properties?.['حالة الحصر'] || feature?.properties?.['type_statu'] || feature?.properties?.['حالة_الحصر'] || feature?.properties?.Status || '';
-    let color = '#94a3b8';
-    if (String(status).includes('جديدة')) color = '#3b82f6';
-    else if (String(status).includes('الحصر') || String(status).includes('العمل')) color = '#eab308';
-    else if (String(status).includes('الانتهاء') || String(status).includes('مكتمل')) color = '#22c55e';
+    const status = window.getFeatureStatus
+      ? window.getFeatureStatus(feature?.properties || {})
+      : (feature?.properties?.['حالة الحصر'] || feature?.properties?.['type_statu'] || feature?.properties?.['حالة_الحصر'] || feature?.properties?.Status || '');
+    let color = window.getZoneStatusColor ? window.getZoneStatusColor(status) : '#64748b';
+    if (!status || color === '#64748b') {
+      if (String(status).includes('جديدة')) color = '#3b82f6';
+      else if (String(status).includes('الحصر') || String(status).includes('العمل')) color = '#eab308';
+      else if (String(status).includes('الانتهاء') || String(status).includes('مكتمل')) color = '#22c55e';
+      else color = '#94a3b8';
+    }
     return { color, weight: 1.5, fillColor: color, fillOpacity: 0.35 };
   }
 
@@ -191,13 +196,48 @@
       }
     };
 
-    const defaultLegendItems = [
-      { key: 'new', type: 'swatch', visible: true, colorClasses: 'bg-blue-500 border border-white/50 shadow-sm', label: { ar: 'مناطق حصر جديدة', en: 'New Survey Zones' } },
-      { key: 'progress', type: 'swatch', visible: true, colorClasses: 'bg-yellow-500 border border-white/50 shadow-sm', label: { ar: 'قيد الحصر', en: 'In Progress' } },
-      { key: 'done', type: 'swatch', visible: true, colorClasses: 'bg-green-500 border border-white/50 shadow-sm', label: { ar: 'تم الانتهاء', en: 'Completed' } },
-      { key: 'gov', type: 'swatch', visible: true, colorClasses: 'bg-white border border-gray-900 shadow-sm', label: { ar: 'حدود المحافظات', en: 'Governorate Boundaries' } },
+    const STATIC_LEGEND_ITEMS = [
+      { key: 'gov', type: 'swatch', visible: true, color: '#ffffff', borderColor: '#111827', label: { ar: 'حدود المحافظات', en: 'Governorate Boundaries' } },
       { key: 'basemap', type: 'icon', visible: true, iconClass: 'fa-solid fa-satellite text-blue-500', label: { ar: 'صورة فضائية أساسية', en: 'Satellite Basemap' } }
     ];
+
+    function buildDynamicStatusLegendItems() {
+      const options = typeof window.getZoneStatusOptions === 'function'
+        ? window.getZoneStatusOptions().filter(item => item && item.active !== false && String(item.label || '').trim())
+        : [];
+
+      if (options.length) {
+        return options.map(item => ({
+          key: `status:${String(item.label).trim()}`,
+          type: 'swatch',
+          visible: true,
+          color: item.color || '#94a3b8',
+          label: { ar: String(item.label).trim(), en: String(item.label).trim() },
+          dynamicStatus: true,
+          statusLabel: String(item.label).trim()
+        }));
+      }
+
+      const fallbackStatuses = [
+        { label: 'مناطق حصر جديدة', color: '#3b82f6' },
+        { label: 'قيد الحصر', color: '#eab308' },
+        { label: 'تم الانتهاء', color: '#22c55e' }
+      ];
+
+      return fallbackStatuses.map(item => ({
+        key: `status:${item.label}`,
+        type: 'swatch',
+        visible: true,
+        color: item.color,
+        label: { ar: item.label, en: item.label },
+        dynamicStatus: true,
+        statusLabel: item.label
+      }));
+    }
+
+    function buildDefaultLegendItems() {
+      return [...buildDynamicStatusLegendItems(), ...deepClone(STATIC_LEGEND_ITEMS)];
+    }
 
     const state = {
       lang: (localStorage.getItem('site_lang') === 'en' ? 'en' : 'ar'),
@@ -212,7 +252,7 @@
       legendTitleVisible: true,
       overviewTitle: { ar: 'خريطة الموقع العام', en: 'Overview Map' },
       legendTitle: { ar: 'مفتاح الخريطة', en: 'Legend' },
-      legendItems: deepClone(defaultLegendItems),
+      legendItems: buildDefaultLegendItems(),
       extraLegendItems: []
     };
 
@@ -337,6 +377,66 @@
         .replace(/'/g, '&#039;');
     }
 
+
+    function getLegendSwatchStyle(item) {
+      const color = item?.color || '#94a3b8';
+      const borderColor = item?.borderColor || 'rgba(255,255,255,0.55)';
+      return `background:${color}; border:1px solid ${borderColor}; box-shadow:0 1px 3px rgba(15,23,42,0.18);`;
+    }
+
+    function syncLegendItemsWithZoneStatuses() {
+      const dynamicItems = buildDynamicStatusLegendItems();
+      const existing = new Map((state.legendItems || []).map(item => [item.key, item]));
+      const mergedDynamic = dynamicItems.map(item => {
+        const prev = existing.get(item.key);
+        return {
+          ...item,
+          visible: prev?.visible ?? item.visible,
+          label: {
+            ar: prev?.label?.ar || item.label.ar,
+            en: prev?.label?.en || item.label.en
+          }
+        };
+      });
+      const staticItems = (state.legendItems || []).filter(item => !item.dynamicStatus).map(item => ({ ...item }));
+      const normalizedStatic = staticItems.length ? staticItems : deepClone(STATIC_LEGEND_ITEMS);
+      state.legendItems = [...mergedDynamic, ...normalizedStatic];
+    }
+
+    function walkFeatureLayers(layer, callback) {
+      if (!layer) return;
+      if (layer.feature && layer.feature.properties) callback(layer);
+      if (typeof layer.eachLayer === 'function') {
+        layer.eachLayer(child => walkFeatureLayers(child, callback));
+      }
+    }
+
+    function applyZoneUpdatesToLayerGroup(layerGroup, updates) {
+      if (!layerGroup || !updates) return false;
+      let changed = false;
+      walkFeatureLayers(layerGroup, (layer) => {
+        const props = layer.feature?.properties || {};
+        const code = props.zone_code || props.area_code || props.work_id || layer.feature?.id;
+        if (code && updates[code]) {
+          Object.assign(props, updates[code]);
+          if (typeof layer.setStyle === 'function') layer.setStyle(getZoneStyle(layer.feature));
+          changed = true;
+        }
+      });
+      return changed;
+    }
+
+    function refreshLayoutLayerStyles() {
+      walkFeatureLayers(layoutMapDataLayer, (layer) => {
+        if (typeof layer.setStyle === 'function') layer.setStyle(getZoneStyle(layer.feature));
+      });
+      walkFeatureLayers(layoutOverviewDataLayer, (layer) => {
+        if (typeof layer.setStyle === 'function') layer.setStyle(getZoneStyle(layer.feature));
+      });
+      renderLegend();
+      renderLegendEditor();
+    }
+
     function getCurrentPresetKey() {
       const match = Object.entries(PRESETS).find(([key, preset]) => key !== 'custom' && preset.width === state.paperWidth && preset.height === state.paperHeight);
       return match ? match[0] : 'custom';
@@ -449,7 +549,7 @@
         } else {
           items.push(`
             <div class="flex items-center gap-2">
-              <div class="w-4 h-4 rounded ${item.colorClasses}"></div>
+              <div class="w-4 h-4 rounded" style="${getLegendSwatchStyle(item)}"></div>
               <span class="text-xs font-semibold text-gray-700">${escapeHtml(getLegendLabel(item))}</span>
             </div>
           `);
@@ -467,7 +567,7 @@
         } else {
           items.push(`
             <div class="flex items-center gap-2 ${item.fullWidth ? 'col-span-2' : ''}">
-              <div class="w-4 h-4 rounded ${item.colorClasses}"></div>
+              <div class="w-4 h-4 rounded" style="${getLegendSwatchStyle(item)}"></div>
               <span class="text-xs font-semibold text-gray-700">${escapeHtml(getLegendLabel(item))}</span>
             </div>
           `);
@@ -492,7 +592,7 @@
             <span>${t('show')}</span>
           </label>
           <div class="layout-legend-chip ${item.type === 'icon' ? 'layout-legend-chip--icon' : ''}">
-            ${item.type === 'icon' ? `<i class="${item.iconClass}"></i>` : `<span class="layout-legend-swatch ${item.colorClasses}"></span>`}
+            ${item.type === 'icon' ? `<i class="${item.iconClass}"></i>` : `<span class="layout-legend-swatch" style="${getLegendSwatchStyle(item)}"></span>`}
           </div>
           <input type="text" class="layout-config-input" data-legend-label="${index}" value="${escapeHtml(getLegendLabel(item))}">
         </div>
@@ -636,10 +736,33 @@
     async function loadLayoutDefaultLayers() {
       if (!layoutMap || layoutMapDataLayer) return;
       try {
-        const [govRes, zoneRes] = await Promise.all([fetch('gov.geojson'), fetch('zone.geojson')]);
-        let [govData, zoneData] = await Promise.all([govRes.json(), zoneRes.json()]);
+        const govRes = await fetch('gov.geojson');
+        let govData = await govRes.json();
+        let zoneData = window.zoneGeoJsonData ? deepClone(window.zoneGeoJsonData) : null;
+
+        if (!zoneData) {
+          const zoneRes = await fetch('zone.geojson');
+          zoneData = await zoneRes.json();
+        }
+
+        if (window.loadAllZoneUpdates && zoneData?.features) {
+          try {
+            const updates = await window.loadAllZoneUpdates();
+            if (updates && typeof updates === 'object') {
+              zoneData.features.forEach(feature => {
+                const props = feature.properties || {};
+                const code = props.zone_code || props.area_code || props.work_id || feature.id;
+                if (code && updates[code]) Object.assign(props, updates[code]);
+              });
+            }
+          } catch (error) {
+            console.warn('Unable to load layout zone updates:', error);
+          }
+        }
+
         govData = filterGeoJsonDataForCurrentUser(govData, 'gov');
         zoneData = filterGeoJsonDataForCurrentUser(zoneData, 'zone');
+        syncLegendItemsWithZoneStatuses();
 
         const govStyle = { color: '#2c3e50', weight: 4, fillOpacity: 0.05, interactive: false };
         const zoneLayer = L.geoJSON(zoneData, { style: getZoneStyle });
@@ -662,7 +785,9 @@
 
         ensureOverviewExtentRect();
 
+        syncLegendItemsWithZoneStatuses();
         renderLegend();
+        renderLegendEditor();
         updateLayoutScaleBar();
         syncLayoutOverview();
       } catch (err) {
@@ -672,6 +797,8 @@
 
     function initLayoutMap() {
       if (layoutMap !== null) {
+        syncLegendItemsWithZoneStatuses();
+        refreshLayoutLayerStyles();
         setTimeout(() => {
           layoutMap.invalidateSize();
           if (layoutOverviewMap) layoutOverviewMap.invalidateSize();
@@ -830,7 +957,7 @@
     }
 
     function resetLegendItemsToDefault() {
-      state.legendItems = deepClone(defaultLegendItems);
+      state.legendItems = buildDefaultLegendItems();
       state.extraLegendItems = [];
       renderLegendEditor();
       renderLegend();
@@ -1261,9 +1388,29 @@
       if (state.lang !== nextLang) applyLanguage(nextLang);
     });
 
+    if (window.listenToZoneStatuses) {
+      window.listenToZoneStatuses(() => {
+        syncLegendItemsWithZoneStatuses();
+        refreshLayoutLayerStyles();
+      });
+    }
+
+    if (window.listenToZoneUpdates) {
+      window.listenToZoneUpdates((updates) => {
+        const changedMain = applyZoneUpdatesToLayerGroup(layoutMapDataLayer, updates);
+        const changedOverview = applyZoneUpdatesToLayerGroup(layoutOverviewDataLayer, updates);
+        if (changedMain || changedOverview) {
+          ensureOverviewExtentRect();
+          updateLayoutScaleBar();
+          syncLayoutOverview();
+        }
+      });
+    }
+
     applyPaperSize(state.paperWidth, state.paperHeight, true);
     applyOverviewSettings({}, true);
     applyLanguage(state.lang);
+    syncLegendItemsWithZoneStatuses();
     renderLegend();
     renderLegendEditor();
     updateOverviewTitleDisplay();

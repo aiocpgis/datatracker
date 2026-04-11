@@ -1,11 +1,48 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
-import { doc, setDoc, getDocs, collection, query, where, deleteDoc } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+import { doc, setDoc, getDoc, getDocs, collection, query, where, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
 import { firebaseConfig } from './firebase-config.js';
 
 let authInstance = null;
 let secondaryAuthInstance = null;
 let authReadyPromise = null;
+
+const ZONE_STATUS_STORAGE_KEY = 'zone_statuses_cache_v1';
+const DEFAULT_ZONE_STATUSES = [
+    { label: 'مناطق حصر جديدة', color: '#3b82f6', order: 1, active: true },
+    { label: 'قيد الحصر', color: '#eab308', order: 2, active: true },
+    { label: 'تم الانتهاء', color: '#22c55e', order: 3, active: true }
+];
+
+function normalizeZoneStatusItem(item = {}, index = 0) {
+    return {
+        label: String(item.label || '').trim(),
+        color: item.color || '#64748b',
+        order: Number.isFinite(item.order) ? item.order : index + 1,
+        active: item.active !== false
+    };
+}
+
+function readCachedZoneStatuses() {
+    try {
+        const raw = localStorage.getItem(ZONE_STATUS_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || !parsed.length) return null;
+        return parsed.map(normalizeZoneStatusItem).filter(item => item.label);
+    } catch (error) {
+        console.warn('Unable to read cached zone statuses:', error);
+        return null;
+    }
+}
+
+function writeCachedZoneStatuses(items) {
+    try {
+        localStorage.setItem(ZONE_STATUS_STORAGE_KEY, JSON.stringify(items));
+    } catch (error) {
+        console.warn('Unable to cache zone statuses:', error);
+    }
+}
 
 // Initialize a secondary app for administrative actions (like creating users)
 // This prevents the main auth session from being disrupted.
@@ -70,6 +107,63 @@ async function queryUsersByField(field, value) {
     return querySnapshot.docs.map((snapshot) => normalizeUserRecord(snapshot.data(), snapshot.id));
 }
 
+function normalizeUsernameValue(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+async function saveLoginIndexEntry(userData) {
+    const normalized = normalizeUserRecord(userData, userData.email || userData.username);
+    const username = normalizeUsernameValue(normalized.username);
+    if (!username || !normalized.email) return;
+
+    await setDoc(doc(window.db, 'login_index', username), {
+        email: normalized.email,
+        username,
+        active: normalized.active !== false,
+        updatedAt: new Date().toISOString()
+    }, { merge: true });
+}
+
+async function deleteLoginIndexEntryByUsername(username) {
+    const normalized = normalizeUsernameValue(username);
+    if (!normalized) return;
+    await deleteDoc(doc(window.db, 'login_index', normalized));
+}
+
+async function deleteLoginIndexEntryByEmail(email) {
+    const normalizedEmail = normalizeIdentifier(email);
+    if (!normalizedEmail) return;
+    const users = await queryUsersByField('email', normalizedEmail);
+    if (users.length) {
+        const username = normalizeUsernameValue(users[0].username);
+        if (username) {
+            await deleteLoginIndexEntryByUsername(username);
+        }
+    }
+}
+
+async function resolveEmailFromLoginIdentifier(identifier) {
+    const normalizedIdentifier = normalizeIdentifier(identifier);
+    if (!normalizedIdentifier) return null;
+
+    if (normalizedIdentifier.includes('@')) {
+        return normalizedIdentifier;
+    }
+
+    try {
+        const loginIndexSnap = await getDoc(doc(window.db, 'login_index', normalizedIdentifier));
+        if (loginIndexSnap.exists()) {
+            const data = loginIndexSnap.data() || {};
+            if (data.active === false) return null;
+            return normalizeIdentifier(data.email || '');
+        }
+    } catch (error) {
+        console.warn('Unable to resolve username from login_index:', error);
+    }
+
+    return null;
+}
+
 function findLocalUser(identifier) {
     const normalizedIdentifier = normalizeIdentifier(identifier);
     const match = localUsers.find((user) => {
@@ -116,48 +210,28 @@ export async function authenticateUser(identifier, password) {
     try {
         if (window.firebaseInit) await window.firebaseInit;
 
-        let targetEmail = null;
-        const normalizedIdentifier = normalizeIdentifier(cleanedIdentifier);
-
-        // 1. Try resolving email from Firestore (Username as ID or Username field)
-        const userDocRef = doc(window.db, 'users', normalizedIdentifier);
-        const userDocSnap = await getDocs(query(collection(window.db, 'users'), where('__name__', '==', normalizedIdentifier)));
-        
-        let foundUser = null;
-        if (!userDocSnap.empty) {
-            foundUser = normalizeUserRecord(userDocSnap.docs[0].data(), userDocSnap.docs[0].id);
-        } else if (!normalizedIdentifier.includes('@')) {
-            const fieldSearch = await queryUsersByField('username', normalizedIdentifier);
-            if (fieldSearch.length > 0) foundUser = fieldSearch[0];
-        }
-
-        if (foundUser) {
-            targetEmail = foundUser.email;
-        } else if (normalizedIdentifier.includes('@')) {
-            targetEmail = normalizedIdentifier;
-        }
-
+        const targetEmail = await resolveEmailFromLoginIdentifier(cleanedIdentifier);
         if (!targetEmail) {
             return { success: false, message: 'اسم المستخدم أو البريد الإلكتروني غير مسجل.' };
         }
 
-        // 2. Perform safe Firebase Authentication
         const userCredential = await signInWithEmailAndPassword(authInstance, targetEmail, cleanedPassword);
-        
-        // 3. Fetch full permissions (Role profile)
-        const finalUsers = await queryUsersByField('email', targetEmail);
-        if(!finalUsers.length) {
+
+        const userRef = doc(window.db, 'users', targetEmail);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
             await signOut(authInstance);
-            return { success: false, message: 'تم التوثيق ولكنك لا تملك ملف صلاحيات.' };
+            return { success: false, message: 'تم التوثيق ولكن لا يوجد ملف صلاحيات لهذا المستخدم.' };
         }
-        
-        const userData = finalUsers[0];
+
+        const userData = normalizeUserRecord(userSnap.data(), userSnap.id);
         if (userData.active === false) {
             await signOut(authInstance);
             return { success: false, message: 'هذا الحساب معطل حالياً.' };
         }
 
-        return { success: true, user: normalizeUserRecord(userData, targetEmail) };
+        return { success: true, user: userData };
     } catch (error) {
         console.error('Firebase Auth error:', error.code, error.message);
         let message = 'تعذر التحقق من البيانات.';
@@ -246,8 +320,9 @@ export async function saveUserToFirestore(userData) {
 
         // 1. التحقق مما إذا كان المستخدم موجوداً مسبقاً في Firestore
         const userRef = doc(window.db, 'users', normalized.email);
-        const userSnap = await getDocs(query(collection(window.db, 'users'), where('email', '==', normalized.email)));
-        const isNewUser = userSnap.empty;
+        const existingUserDoc = await getDoc(userRef);
+        const isNewUser = !existingUserDoc.exists();
+        const previousUserData = existingUserDoc.exists() ? normalizeUserRecord(existingUserDoc.data(), existingUserDoc.id) : null;
 
         // 2. إذا كان مستخدماً جديداً، نقوم بإنشاء حساب في Firebase Auth (إذا توفرت كلمة المرور)
         if (isNewUser && userData.password) {
@@ -278,6 +353,14 @@ export async function saveUserToFirestore(userData) {
         payload.updatedAt = new Date().toISOString();
         await setDoc(userRef, payload, { merge: true });
 
+        const previousUsername = normalizeUsernameValue(previousUserData?.username);
+        const currentUsername = normalizeUsernameValue(payload.username);
+        if (previousUsername && previousUsername !== currentUsername) {
+            await deleteLoginIndexEntryByUsername(previousUsername).catch((error) => console.warn('Previous login index cleanup warning:', error));
+        }
+
+        await saveLoginIndexEntry(payload);
+
         console.log(`User ${payload.email} profile saved successfully`);
         return { success: true };
     } catch (error) {
@@ -292,6 +375,7 @@ export async function deleteUserFromFirestore(email) {
         if (!email) return { success: false, message: 'البريد الإلكتروني مطلوب للحذف' };
         
         const normalizedEmail = email.toLowerCase().trim();
+        await deleteLoginIndexEntryByEmail(normalizedEmail).catch((error) => console.warn('Login index cleanup warning:', error));
         
         // 1. البحث عن المستند باستخدام حقل البريد الإلكتروني (أكثر دقة)
         const q = query(collection(window.db, 'users'), where('email', '==', normalizedEmail));
@@ -312,6 +396,20 @@ export async function deleteUserFromFirestore(email) {
         return { success: true };
     } catch (error) {
         console.error('Error deleting user:', error);
+        return { success: false, message: error.message };
+    }
+}
+
+export async function syncLoginIndex() {
+    try {
+        if (window.firebaseInit) await window.firebaseInit;
+        const users = await getAllUsers();
+        for (const user of users) {
+            await saveLoginIndexEntry(user);
+        }
+        return { success: true, count: users.length };
+    } catch (error) {
+        console.error('Error syncing login index:', error);
         return { success: false, message: error.message };
     }
 }
@@ -406,5 +504,95 @@ export async function loadMasterGeoJson(key) {
         return null;
     } catch (error) {
         return null;
+    }
+}
+
+export async function loadZoneStatuses() {
+    try {
+        if (window.firebaseInit) await window.firebaseInit;
+
+        const ref = doc(window.db, 'app_config', 'zone_statuses');
+        const snap = await getDoc(ref);
+
+        if (snap.exists()) {
+            const items = Array.isArray(snap.data().items) ? snap.data().items.map(normalizeZoneStatusItem).filter(item => item.label) : [];
+            if (items.length) {
+                writeCachedZoneStatuses(items);
+                return items;
+            }
+        }
+
+        const cached = readCachedZoneStatuses();
+        if (cached && cached.length) {
+            return cached;
+        }
+
+        await setDoc(ref, {
+            items: DEFAULT_ZONE_STATUSES,
+            updatedAt: new Date().toISOString(),
+            updatedBy: window.currentUser?.email || 'system'
+        }, { merge: true });
+
+        writeCachedZoneStatuses(DEFAULT_ZONE_STATUSES);
+        return DEFAULT_ZONE_STATUSES;
+    } catch (error) {
+        console.error('Error loading zone statuses:', error);
+        const cached = readCachedZoneStatuses();
+        if (cached && cached.length) return cached;
+        return DEFAULT_ZONE_STATUSES;
+    }
+}
+
+export async function saveZoneStatuses(items) {
+    try {
+        if (window.firebaseInit) await window.firebaseInit;
+
+        const cleaned = (items || [])
+            .map((item, index) => normalizeZoneStatusItem(item, index))
+            .filter(item => item.label);
+
+        writeCachedZoneStatuses(cleaned);
+
+        await setDoc(doc(window.db, 'app_config', 'zone_statuses'), {
+            items: cleaned,
+            updatedAt: new Date().toISOString(),
+            updatedBy: window.currentUser?.email || 'system'
+        }, { merge: true });
+
+        return { success: true, items: cleaned, localOnly: false };
+    } catch (error) {
+        console.error('Error saving zone statuses:', error);
+        const cleaned = (items || [])
+            .map((item, index) => normalizeZoneStatusItem(item, index))
+            .filter(item => item.label);
+        writeCachedZoneStatuses(cleaned);
+        return { success: true, items: cleaned, localOnly: true, message: error.message };
+    }
+}
+
+export function listenToZoneStatuses(callback) {
+    try {
+        return onSnapshot(
+            doc(window.db, 'app_config', 'zone_statuses'),
+            (snap) => {
+                let items = DEFAULT_ZONE_STATUSES;
+                if (snap.exists()) {
+                    const loaded = Array.isArray(snap.data().items) ? snap.data().items.map(normalizeZoneStatusItem).filter(item => item.label) : [];
+                    if (loaded.length) items = loaded;
+                }
+                writeCachedZoneStatuses(items);
+                callback(items);
+            },
+            (error) => {
+                console.error('Zone statuses listener error:', error);
+                const cached = readCachedZoneStatuses();
+                callback((cached && cached.length) ? cached : DEFAULT_ZONE_STATUSES);
+            }
+        );
+    } catch (error) {
+        console.error('Unable to bind zone status listener:', error);
+        const cached = readCachedZoneStatuses();
+        callback((cached && cached.length) ? cached : DEFAULT_ZONE_STATUSES);
+        return () => {};
     }
 }
