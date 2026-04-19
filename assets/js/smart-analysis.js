@@ -37,7 +37,7 @@
   function getZoneStyle(feature) {
     const status = window.getFeatureStatus
       ? window.getFeatureStatus(feature?.properties || {})
-      : (feature?.properties?.['حالة الحصر'] || feature?.properties?.['type_statu'] || feature?.properties?.['حالة_الحصر'] || feature?.properties?.Status || '');
+      : (feature?.properties?.['type_statu'] || '');
     let color = window.getZoneStatusColor ? window.getZoneStatusColor(status) : '#64748b';
     if (!status || color === '#64748b') {
       if (String(status).includes('جديدة')) color = '#3b82f6';

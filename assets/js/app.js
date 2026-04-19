@@ -197,7 +197,7 @@ window.geoJsonLayers = geoJsonLayers;
         }
 
         function getFeatureStatus(props = {}) {
-            return String(props['حالة الحصر'] || props['type_statu'] || props['حالة_الحصر'] || props.Status || '').trim();
+            return String(props['type_statu'] || '').trim();
         }
 
         function getAllKnownZoneStatusesFromFeatures(features = []) {
@@ -1300,65 +1300,99 @@ window.geoJsonLayers = geoJsonLayers;
                     setupTool(tool.sideId);
                 });
 
-                // أداة القص (Cut)
-                const setupCut = (id) => {
+                // أداة القص والتحريك والحذف
+                const setupToolMode = (id, checkEnabled, enableMode, ringClass) => {
                     const btn = document.getElementById(id);
                     if(btn) {
                         btn.addEventListener('click', () => {
-                            const isActive = map.pm.globalCutModeEnabled();
+                            const isActive = checkEnabled();
                             disableAllMapTools();
                             if(!isActive) {
-                                map.pm.enableGlobalCutMode();
-                                btn.classList.add('active-tool', 'ring-4', 'ring-orange-500');
-                                const other = document.getElementById(id === 'btnCutMode' ? 'sideBtnCutMode' : 'btnCutMode');
-                                if(other) other.classList.add('active-tool');
+                                enableMode();
+                                btn.classList.add('active-tool', 'ring-4', ringClass);
                             }
                         });
                     }
                 };
-                setupCut('btnCutMode'); setupCut('sideBtnCutMode');
 
-                // أداة التحريك (Drag)
-                const setupDrag = (id) => {
-                    const btn = document.getElementById(id);
-                    if(btn) {
-                        btn.addEventListener('click', () => {
-                            const isActive = map.pm.globalDragModeEnabled();
-                            disableAllMapTools();
-                            if(!isActive) {
-                                map.pm.enableGlobalDragMode();
-                                btn.classList.add('active-tool', 'ring-4', 'ring-purple-500');
-                                const other = document.getElementById(id === 'btnDragMode' ? 'sideBtnDragMode' : 'btnDragMode');
-                                if(other) other.classList.add('active-tool');
-                            }
-                        });
-                    }
-                };
-                setupDrag('btnDragMode'); setupDrag('sideBtnDragMode');
-
-                // أداة الحذف (Delete)
-                const setupDelete = (id) => {
-                    const btn = document.getElementById(id);
-                    if(btn) {
-                        btn.addEventListener('click', () => {
-                            const isActive = map.pm.globalRemovalEnabled();
-                            disableAllMapTools();
-                            if(!isActive) {
-                                map.pm.enableGlobalRemovalMode();
-                                btn.classList.add('active-tool', 'ring-4', 'ring-red-500');
-                                const other = document.getElementById(id === 'btnDeleteMode' ? 'sideBtnDeleteMode' : 'btnDeleteMode');
-                                if(other) other.classList.add('active-tool');
-                            }
-                        });
-                    }
-                };
-                setupDelete('btnDeleteMode'); setupDelete('sideBtnDeleteMode');
+                setupToolMode('sideBtnCutMode', () => map.pm.globalCutModeEnabled(), () => map.pm.enableGlobalCutMode(), 'ring-orange-500');
+                setupToolMode('sideBtnDragMode', () => map.pm.globalDragModeEnabled(), () => map.pm.enableGlobalDragMode(), 'ring-purple-500');
+                setupToolMode('sideBtnDeleteMode', () => map.pm.globalRemovalEnabled(), () => map.pm.enableGlobalRemovalMode(), 'ring-red-500');
 
                 // أزرار الحفظ وباقي الوظائف
+                window.stagedMasterData = null;
+
                 const actionTools = [
-                    { id: 'sideBtnSyncToCloud', action: () => document.getElementById('btnSyncToCloud')?.click() },
-                    { id: 'sideBtnUndoEdits', action: () => document.getElementById('btnUndoEdits')?.click() },
-                    { id: 'sideBtnSnapMode', action: () => document.getElementById('btnSnapMode')?.click() }
+                    { 
+                        id: 'sideBtnSyncToCloud', 
+                        action: async () => {
+                            if (!window.newDrawnLayers || window.newDrawnLayers.length === 0) {
+                                showToast('لا توجد ملامح جديدة للحفظ حالياً', 'orange');
+                                return;
+                            }
+                            showToast('جاري الحفظ في السحابة...', 'blue');
+                            let successCount = 0;
+                            for (const layer of window.newDrawnLayers) {
+                                const geojson = layer.toGeoJSON();
+                                geojson.id = geojson.id || 'feat_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+                                const res = await window.saveDrawnFeature(geojson);
+                                if (res.success) {
+                                    successCount++;
+                                    layer.feature = geojson;
+                                }
+                            }
+                            window.newDrawnLayers = []; 
+                            showToast(`تم حفظ ${successCount} ملامح بنجاح في السحابة`, 'success');
+                        } 
+                    },
+                    { 
+                        id: 'sideBtnUndoEdits', 
+                        action: () => { 
+                            if(window.restorePreviousProperties) window.restorePreviousProperties(); 
+                        } 
+                    },
+                    { 
+                        id: 'sideBtnSnapMode', 
+                        action: (e) => { 
+                            const btn = e.currentTarget;
+                            const active = btn.classList.toggle('ring-4'); 
+                            map.pm.setGlobalSnapping(active);
+                            showToast(active ? 'تم تفعيل الالتصاق (Snapping)' : 'تم إيقاف الالتصاق');
+                        } 
+                    },
+                    {
+                        id: 'sideBtnUpdateMasterData',
+                        action: () => {
+                            if (window.currentUser && window.currentUser.role === 'admin') {
+                                document.getElementById('geoJsonInput').setAttribute('data-target', 'master');
+                                document.getElementById('geoJsonInput').click();
+                            } else {
+                                showToast('عذراً، هذه الصلاحية للمسؤولين فقط', 'red');
+                            }
+                        }
+                    },
+                    {
+                        id: 'sideBtnReloadMasterData',
+                        action: async () => {
+                            if (window.stagedMasterData) {
+                                const confirmed = confirm('هل أنت متأكد من استبدال الملف المرجعي الرسمي (الزونات) بالملف الجديد الذي قمت باختياره؟ سيتم اعتماد هذه النسخة كمرجع وحيد للجميع في النظام.');
+                                if (confirmed) {
+                                    showToast('جاري استبدال الملف المرجعي في السحابة...', 'blue');
+                                    const res = await window.saveMasterGeoJson('zone', window.stagedMasterData);
+                                    if (res.success) {
+                                        showToast('تم استبدال واحتماد الملف المرجعي جديد بنجاح في السحابة ✅', 'success');
+                                        window.stagedMasterData = null;
+                                        loadMasterGeoJsonData();
+                                    } else {
+                                        showToast('حدث خطأ أثناء الرفع: ' + (res.message || 'خطأ غير معروف'), 'red');
+                                    }
+                                }
+                            } else {
+                                loadMasterGeoJsonData();
+                                showToast('جاري تحديث البيانات الرسمية من السحاب...', 'blue');
+                            }
+                        }
+                    }
                 ];
                 actionTools.forEach(t => {
                     const btn = document.getElementById(t.id);
@@ -1380,13 +1414,8 @@ window.geoJsonLayers = geoJsonLayers;
                                 const data = JSON.parse(event.target.result);
                                 
                                 if (isMasterUpdate) {
-                                    if (confirm('هل أنت متأكد من اعتماد هذا الملف كمرجع رسمي للجميع؟')) {
-                                        const res = await window.saveMasterGeoJson('zone', data);
-                                        if (res.success) {
-                                            showToast('تم تحديث الملف المعتمد في السحابة بنجاح', 'success');
-                                            loadMasterGeoJsonData();
-                                        }
-                                    }
+                                    window.stagedMasterData = data;
+                                    showToast('تم تحميل الملف المرجعي محلياً وبنجاح. اضغط الآن على "تحديث رسمي للبيانات" لرفعه وحفظه في السحابة.', 'info');
                                     return;
                                 }
 
@@ -2266,7 +2295,7 @@ window.geoJsonLayers = geoJsonLayers;
             let lastSavedProperties = null;
             let lastSelectedFeatureKey = null;
 
-            const statusFieldNames = ['حالة الحصر', 'type_statu', 'حالة_الحصر', 'Status'];
+            const statusFieldNames = ['type_statu'];
             const reservedFields = ['OBJECTID', 'OBJECTID_1', 'Shape_Area', 'Shape_Length'];
 
             function isStatusField(key) {
@@ -2514,6 +2543,17 @@ window.geoJsonLayers = geoJsonLayers;
                 
                 const props = layer.feature && layer.feature.properties ? layer.feature.properties : {};
                 
+                // Data Migration: Normalize status fields to 'type_statu'
+                const legacyStatusKeys = ['حالة الحصر', 'حالة_الحصر', 'Status'];
+                legacyStatusKeys.forEach(key => {
+                    if (props[key] !== undefined) {
+                        if (!props['type_statu']) {
+                            props['type_statu'] = props[key];
+                        }
+                        delete props[key];
+                    }
+                });
+
                 if (Object.keys(props).length === 0) {
                     attributesContainer.innerHTML = '<p class="text-gray-500 text-sm font-semibold bg-white/50 p-4 rounded-xl border border-white/60">لا توجد بيانات وصفية مرفقة بهذا الشكل، سيتم إضافة بيانات جديدة تلقائياً إذا قمت بإدخالها لاحقاً.</p>';
                     props.Name = '';
@@ -2524,7 +2564,7 @@ window.geoJsonLayers = geoJsonLayers;
                 updateUndoButtonVisibility();
 
                 const isAdmin = window.currentUser && window.currentUser.role === 'admin';
-                const restrictedFields = ['type_statu', 'حالة الحصر', 'حالة_الحصر', 'Status', 'engineers_', 'عدد المهندسين', 'عدد_المهندسين', 'teams_coun', 'عدد الفرق', 'عدد_الفرق', 'unit_count', 'عدد الوحدات', 'عدد_الوحدات'];
+                const restrictedFields = ['type_statu', 'engineers_', 'عدد المهندسين', 'عدد_المهندسين', 'teams_coun', 'عدد الفرق', 'عدد_الفرق', 'unit_count', 'عدد الوحدات', 'عدد_الوحدات'];
 
                 Object.keys(props).forEach(key => {
                     if (reservedFields.includes(key)) return;
@@ -2609,7 +2649,7 @@ window.geoJsonLayers = geoJsonLayers;
                         if (zoneCode) {
                             // Prepare data object with new field names as shown in user screenshot
                             const updateData = {
-                                "حالة الحصر": currentSelectedLayer.feature.properties["حالة الحصر"] || currentSelectedLayer.feature.properties["type_statu"] || currentSelectedLayer.feature.properties["حالة_الحصر"] || "",
+                                "type_statu": currentSelectedLayer.feature.properties["type_statu"] || "",
                                 "عدد الفرق": parseInt(currentSelectedLayer.feature.properties["عدد الفرق"] || currentSelectedLayer.feature.properties["teams_coun"]) || 0,
                                 "عدد المهندسين": parseInt(currentSelectedLayer.feature.properties["عدد المهندسين"] || currentSelectedLayer.feature.properties["engineers_"]) || 0
                             };
