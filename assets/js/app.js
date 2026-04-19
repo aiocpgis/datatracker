@@ -197,7 +197,7 @@ window.geoJsonLayers = geoJsonLayers;
         }
 
         function getFeatureStatus(props = {}) {
-            return String(props['type_statu'] || '').trim();
+            return String(props['type_statu'] || props['حالة الحصر'] || props['حالة_الحصر'] || props['Status'] || props['حالة الإنجاز'] || '').trim();
         }
 
         function getAllKnownZoneStatusesFromFeatures(features = []) {
@@ -415,15 +415,6 @@ window.geoJsonLayers = geoJsonLayers;
         }
 
         function getInitialLandingPageId() {
-            const currentUser = window.currentUser || null;
-
-            if (isObserverLikeRole(currentUser)) {
-                const flowBtn = document.getElementById('nav-flow');
-                if (flowBtn && flowBtn.style.display !== 'none') {
-                    return 'flow';
-                }
-            }
-
             const navToPageMap = [
                 { navId: 'nav-home', pageId: 'home' },
                 { navId: 'nav-stats', pageId: 'process' },
@@ -1179,7 +1170,8 @@ window.geoJsonLayers = geoJsonLayers;
             geoJsonLayers.zone = null;
             geoJsonLayers.road = null;
             window.geoJsonLayers = geoJsonLayers;
-            const canEditMap = canEditMapForCurrentUser();
+            // Removed static canEditMap check to support real-time permission updates. 
+            // Permissions are now checked dynamically inside event handlers.
 
             // إيقاف وتجاهل أدوات Geoman الافتراضية
             map.pm.removeControls();
@@ -1269,7 +1261,9 @@ window.geoJsonLayers = geoJsonLayers;
             }
 
             // ربط أحداث أدوات الرسم
-            if (canEditMap) {
+            // Register edit tools always, but check permissions inside the click handler
+            // this ensures that if permissions are granted in real-time, the tools become functional immediately.
+            if (true) {
                 // تعريف الأدوات للربط الثنائي (Ribbon + Sidebar)
                 const toolsMapping = [
                     { ribbonId: 'btnDrawPoly', sideId: 'sideBtnDrawPoly', mode: 'Polygon', color: 'emerald' },
@@ -1283,6 +1277,10 @@ window.geoJsonLayers = geoJsonLayers;
                         const btn = document.getElementById(id);
                         if(btn) {
                             btn.addEventListener('click', () => {
+                                if (!canEditMapForCurrentUser()) {
+                                    showToast('عذراً، لا تملك صلاحية التعديل حالياً', 'red');
+                                    return;
+                                }
                                 const isActive = btn.classList.contains('active-tool');
                                 disableAllMapTools();
                                 if(!isActive) {
@@ -1305,6 +1303,10 @@ window.geoJsonLayers = geoJsonLayers;
                     const btn = document.getElementById(id);
                     if(btn) {
                         btn.addEventListener('click', () => {
+                            if (!canEditMapForCurrentUser()) {
+                                showToast('عذراً، لا تملك صلاحية التعديل حالياً', 'red');
+                                return;
+                            }
                             const isActive = checkEnabled();
                             disableAllMapTools();
                             if(!isActive) {
@@ -2295,7 +2297,7 @@ window.geoJsonLayers = geoJsonLayers;
             let lastSavedProperties = null;
             let lastSelectedFeatureKey = null;
 
-            const statusFieldNames = ['type_statu'];
+            const statusFieldNames = ['type_statu', 'حالة الحصر', 'حالة_الحصر', 'Status', 'حالة الإنجاز'];
             const reservedFields = ['OBJECTID', 'OBJECTID_1', 'Shape_Area', 'Shape_Length'];
 
             function isStatusField(key) {
@@ -2379,6 +2381,9 @@ window.geoJsonLayers = geoJsonLayers;
                 removeButton.className = 'text-red-500 hover:text-red-600 transition-colors text-sm font-bold';
                 removeButton.innerHTML = '<i class="fa-solid fa-trash"></i> حذف';
                 removeButton.title = 'حذف هذا الحقل';
+                const isSysAdmin = window.isAdmin && window.isAdmin();
+                if (!isSysAdmin) removeButton.style.display = 'none';
+
                 removeButton.addEventListener('click', () => {
                     const fieldKey = keyInput.value.trim();
                     if (!fieldKey) return;
@@ -2418,6 +2423,9 @@ window.geoJsonLayers = geoJsonLayers;
                     addBtn.type = 'button';
                     addBtn.className = 'px-3 py-3 rounded-xl bg-blue-600 text-white text-xs font-bold whitespace-nowrap hover:bg-blue-700 transition-colors';
                     addBtn.innerHTML = '<i class="fa-solid fa-plus ml-1"></i>نوع جديد';
+                    
+                    const isSysAdmin = window.isAdmin && window.isAdmin();
+                    if (!isSysAdmin) addBtn.style.display = 'none';
 
                     addBtn.addEventListener('click', async () => {
                         const newLabel = String(prompt('أدخل اسم نوع الحصر الجديد') || '').trim();
@@ -2543,16 +2551,8 @@ window.geoJsonLayers = geoJsonLayers;
                 
                 const props = layer.feature && layer.feature.properties ? layer.feature.properties : {};
                 
-                // Data Migration: Normalize status fields to 'type_statu'
-                const legacyStatusKeys = ['حالة الحصر', 'حالة_الحصر', 'Status'];
-                legacyStatusKeys.forEach(key => {
-                    if (props[key] !== undefined) {
-                        if (!props['type_statu']) {
-                            props['type_statu'] = props[key];
-                        }
-                        delete props[key];
-                    }
-                });
+                // Removed automatic migration to 'type_statu' to preserve original field names as requested.
+                // Status logic now dynamically checks multiple possible keys.
 
                 if (Object.keys(props).length === 0) {
                     attributesContainer.innerHTML = '<p class="text-gray-500 text-sm font-semibold bg-white/50 p-4 rounded-xl border border-white/60">لا توجد بيانات وصفية مرفقة بهذا الشكل، سيتم إضافة بيانات جديدة تلقائياً إذا قمت بإدخالها لاحقاً.</p>';
@@ -2564,12 +2564,18 @@ window.geoJsonLayers = geoJsonLayers;
                 updateUndoButtonVisibility();
 
                 const isAdmin = window.currentUser && window.currentUser.role === 'admin';
-                const restrictedFields = ['type_statu', 'engineers_', 'عدد المهندسين', 'عدد_المهندسين', 'teams_coun', 'عدد الفرق', 'عدد_الفرق', 'unit_count', 'عدد الوحدات', 'عدد_الوحدات'];
+                
+                // Dynamic Field Restrictions based on RBAC (Whitelisting variants)
+                const restrictedFields = [];
+                if (isAdmin || window.currentUser?.view_statu !== false) restrictedFields.push('type_statu', 'حالة الحصر', 'حالة_الحصر', 'Status', 'حالة الإنجاز');
+                if (isAdmin || window.currentUser?.view_engineers !== false) restrictedFields.push('engineers_', '_engineers', 'عدد المهندسين', 'عدد_المهندسين');
+                if (isAdmin || window.currentUser?.view_teams !== false) restrictedFields.push('teams_coun', 'عدد الفرق', 'عدد_الفرق');
+                if (isAdmin || window.currentUser?.view_units === true) restrictedFields.push('unit_count', 'عدد الوحدات', 'عدد_الوحدات');
 
                 Object.keys(props).forEach(key => {
                     if (reservedFields.includes(key)) return;
                     
-                    // Apply field restriction for non-admins
+                    // Field visibility check
                     if (!isAdmin && !restrictedFields.includes(key)) {
                         return;
                     }
@@ -2578,6 +2584,11 @@ window.geoJsonLayers = geoJsonLayers;
                     const row = createAttributeRow(key, val, false);
                     attributesContainer.appendChild(row);
                 });
+
+                if (addPropertyBtn) {
+                    if (isAdmin) addPropertyBtn.classList.remove('hidden');
+                    else addPropertyBtn.classList.add('hidden');
+                }
 
                 attributesPanel.classList.remove('hidden-panel');
                 setTimeout(() => attributesPanel.classList.add('show-panel'), 10);
@@ -2602,7 +2613,7 @@ window.geoJsonLayers = geoJsonLayers;
                 downloadGeoJsonBtn.addEventListener('click', downloadGeoJsonFile);
             }
 
-            if(saveAttributesBtn && canEditMap) {
+            if(saveAttributesBtn) {
                 saveAttributesBtn.addEventListener('click', () => {
                     if(!currentSelectedLayer) return;
                     if(!currentSelectedLayer.feature) {
@@ -2715,7 +2726,7 @@ window.geoJsonLayers = geoJsonLayers;
                 
                 layer.on('click', function(e) {
                     L.DomEvent.stopPropagation(e);
-                    if (!canEditMap) return;
+                    if (!canEditMapForCurrentUser()) return;
                     
                     if(map.pm.globalRemovalEnabled()) return;
 
@@ -2736,7 +2747,7 @@ window.geoJsonLayers = geoJsonLayers;
             }
 
             map.on('click', function() {
-                if (!canEditMap) return;
+                if (!canEditMapForCurrentUser()) return;
                 map.eachLayer(function(layer) {
                     if (layer.pm && layer.pm.enabled()) {
                         layer.pm.disable();
@@ -2860,7 +2871,7 @@ window.geoJsonLayers = geoJsonLayers;
             window.currentViewBaseLayer.addTo(map);
 
             const geoJsonLayers = { gov: null, zone: null };
-            const canEditMap = canEditMapForCurrentUser();
+            // canEditMap logic removed to support real-time permissions
             let popupFields = []; // المتغير الذي يخزن مفاتيح الخصائص ديناميكياً
 
             // وظيفة توليد محتوى البوب أب / التولتيب ديناميكياً وقت الحاجة
@@ -3335,7 +3346,9 @@ window.geoJsonLayers = geoJsonLayers;
                         <tr class="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                             <td class="px-6 py-4">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">${user.name ? user.name[0] : (user.email ? user.email[0].toUpperCase() : 'U')}</div>
+                                    <div class="w-10 h-10 rounded-full ${user.gender === 'female' ? 'bg-pink-100 text-pink-600' : 'bg-blue-100 text-blue-600'} flex items-center justify-center font-bold shadow-sm transition-all">
+                                        ${user.name ? user.name[0] : (user.email ? user.email[0].toUpperCase() : 'U')}
+                                    </div>
                                     <div class="flex flex-col text-right"><span class="font-bold text-gray-800">${user.name || 'مراقب'}</span><span class="text-xs text-gray-400" dir="ltr">@${user.username || 'user'}</span></div>
                                 </div>
                             </td>
@@ -3417,7 +3430,8 @@ window.geoJsonLayers = geoJsonLayers;
 
                 const permissionIds = [
                     'perm_showHome', 'perm_showStats', 'perm_showFlow', 'perm_showStyle', 'perm_showPersonas',
-                    'perm_canDraw', 'perm_canEditData', 'perm_canEditStatus', 'perm_canExport', 'perm_canManageUsers'
+                    'perm_canDraw', 'perm_canEditData', 'perm_canEditStatus', 'perm_canExport', 'perm_canManageUsers',
+                    'perm_view_statu', 'perm_view_engineers', 'perm_view_teams', 'perm_view_units'
                 ];
 
                 function openModal(user = null) {
@@ -3433,6 +3447,7 @@ window.geoJsonLayers = geoJsonLayers;
                     document.getElementById('userPassword').required = !isEditing;
                     document.getElementById('userRole').value = user ? (user.role || 'viewer') : 'viewer';
                     document.getElementById('userGov').value = user ? formatGovernorateDisplay(user.governorate) : 'all';
+                    document.getElementById('userGender').value = user ? (user.gender || 'male') : 'male';
                     document.getElementById('userActive').checked = user ? (user.active !== false) : true;
 
                     // تعبئة الصلاحيات
@@ -3443,7 +3458,7 @@ window.geoJsonLayers = geoJsonLayers;
                             if (user) {
                                 cb.checked = user[id.replace('perm_', '')] !== false;
                             } else {
-                                if (id.startsWith('perm_show')) {
+                                if (id.startsWith('perm_show') || id === 'perm_view_statu' || id === 'perm_view_engineers' || id === 'perm_view_teams') {
                                     cb.checked = true;
                                 } else {
                                     cb.checked = false;
@@ -3479,6 +3494,7 @@ window.geoJsonLayers = geoJsonLayers;
                             username: document.getElementById('userUsername').value.trim().toLowerCase(),
                             email: document.getElementById('userEmail').value.trim().toLowerCase(),
                             role: document.getElementById('userRole').value,
+                            gender: document.getElementById('userGender').value,
                             governorate: normalizeGovernorateInput(document.getElementById('userGov').value),
                             active: document.getElementById('userActive').checked
                         };

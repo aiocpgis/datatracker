@@ -38,9 +38,9 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
-        import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+        import { getFirestore, collection, onSnapshot, doc } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
         import { firebaseConfig } from './firebase-config.js';
-        import { initializeFirebase, saveZoneUpdate, loadAllZoneUpdates, getAllUsers, saveUserToFirestore, deleteUserFromFirestore, signOutUser, loadZoneStatuses, saveZoneStatuses, listenToZoneStatuses, syncLoginIndex } from './firebase-operations.js';
+        import { initializeFirebase, saveZoneUpdate, loadAllZoneUpdates, getAllUsers, saveUserToFirestore, deleteUserFromFirestore, signOutUser, loadZoneStatuses, saveZoneStatuses, listenToZoneStatuses, syncLoginIndex, normalizeUserRecord } from './firebase-operations.js';
 
         const app = initializeApp(firebaseConfig);
         window.db = getFirestore(app);
@@ -55,6 +55,36 @@
         window.saveZoneStatuses = saveZoneStatuses;
         window.listenToZoneStatuses = listenToZoneStatuses;
         window.syncLoginIndex = syncLoginIndex;
+
+        // إعداد الاستماع اللحظي (Real-time) لتحديثات الصلاحيات للمستخدم الحالي
+        if (window.currentUser && window.currentUser.email) {
+            const userDocRef = doc(window.db, 'users', window.currentUser.email);
+            onSnapshot(userDocRef, (snap) => {
+                if (snap.exists()) {
+                    const freshData = normalizeUserRecord(snap.data(), snap.id);
+                    
+                    // إذا تم تعطيل الحساب، اطرده فوراً
+                    if (freshData.active === false) {
+                        console.warn("Account deactivated, logging out...");
+                        if (window.logout) window.logout();
+                        return;
+                    }
+
+                    console.log("Real-time profile update active");
+                    
+                    // تحديث الذاكرة والنافذة
+                    window.currentUser = freshData;
+                    sessionStorage.setItem('currentUser', JSON.stringify(freshData));
+                    
+                    // إعادة تطبيق الصلاحيات فوراً في الواجهة
+                    if (window.applyUIPermissions) {
+                        window.applyUIPermissions();
+                    }
+                }
+            }, (err) => {
+                console.warn("User real-time listener error:", err);
+            });
+        }
 
         // إعداد الاستماع اللحظي (Real-time) لتحديثات الزونات من Firebase
         window.listenToZoneUpdates = function(callback) {
@@ -1838,31 +1868,31 @@
                                         <input type="checkbox" id="perm_showHome"
                                             class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             checked>
-                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">الرئيسية والخريطة</span>
+                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">محرر الخرائط</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer group">
                                         <input type="checkbox" id="perm_showStats"
                                             class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             checked>
-                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">الإحصائيات</span>
+                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">الإحصاء التحليلي</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer group">
                                         <input type="checkbox" id="perm_showFlow"
                                             class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             checked>
-                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">العرض والشرح</span>
+                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">عرض البيانات</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer group">
                                         <input type="checkbox" id="perm_showStyle"
                                             class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             checked>
-                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">الهوية</span>
+                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">الإخراج الفني</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer group">
                                         <input type="checkbox" id="perm_showPersonas"
                                             class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             checked>
-                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">الشخصيات</span>
+                                        <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">مخرجات الحصر</span>
                                     </label>
                                 </div>
 
@@ -1880,12 +1910,34 @@
                                                 class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                             <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">تعديل بيانات الحصر</span>
                                         </label>
-                                        <label class="flex items-center gap-2 cursor-pointer group">
-                                            <input type="checkbox" id="perm_canEditStatus"
-                                                class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                            <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">تغيير حالة الإنجاز</span>
-                                        </label>
-                                    </div>
+                                         <label class="flex items-center gap-2 cursor-pointer group">
+                                             <input type="checkbox" id="perm_canEditStatus"
+                                                 class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                             <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">تغيير حالة الإنجاز</span>
+                                         </label>
+                                     </div>
+                                     
+                                     <div>
+                                         <p class="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 mt-2">ظهور الحقول (Data Fields)</p>
+                                         <div class="space-y-1.5">
+                                             <label class="flex items-center gap-2 cursor-pointer group">
+                                                 <input type="checkbox" id="perm_view_statu" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                                 <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600">حالة الحصر</span>
+                                             </label>
+                                             <label class="flex items-center gap-2 cursor-pointer group">
+                                                 <input type="checkbox" id="perm_view_engineers" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                                 <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600">عدد المهندسين</span>
+                                             </label>
+                                             <label class="flex items-center gap-2 cursor-pointer group">
+                                                 <input type="checkbox" id="perm_view_teams" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                                 <span class="text-xs font-bold text-gray-700 group-hover:text-blue-600">عدد الفرق</span>
+                                             </label>
+                                             <label class="flex items-center gap-2 cursor-pointer group">
+                                                 <input type="checkbox" id="perm_view_units" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                                 <span class="text-xs font-bold text-red-600 group-hover:text-red-700">عدد الوحدات (بيان حساس)</span>
+                                             </label>
+                                         </div>
+                                     </div>
 
                                     <div>
                                         <p class="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">الأدوات النظامية</p>

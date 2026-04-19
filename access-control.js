@@ -1,5 +1,5 @@
 (function () {
-  const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
+  let currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
   if (!currentUser) {
     window.location.href = 'login.html';
     return;
@@ -7,9 +7,7 @@
 
   window.currentUser = currentUser;
 
-  if (currentUser.gender === 'female') {
-    document.body.classList.add('theme-female');
-  }
+
 
   function normalizeArabic(value) {
     return String(value || '')
@@ -52,8 +50,9 @@
   }
 
   function getAssignedGovernorateRaw() {
-    if (!currentUser || currentUser.role === 'admin') return 'all';
-    return currentUser.governorate || currentUser.governorates || 'all';
+    const u = window.currentUser || currentUser;
+    if (!u || u.role === 'admin') return 'all';
+    return u.governorate || u.governorates || 'all';
   }
 
   function getAssignedGovernoratesList() {
@@ -101,7 +100,8 @@
   }
 
   function filterGeoJSONByUser(data) {
-    if (!data || !Array.isArray(data.features) || currentUser.role === 'admin') return data;
+    const u = window.currentUser || currentUser;
+    if (!data || !Array.isArray(data.features) || u.role === 'admin') return data;
     return {
       ...data,
       features: data.features.filter((feature) => isFeatureAllowed(feature))
@@ -112,13 +112,28 @@
     document.querySelectorAll(selector).forEach((el) => {
       el.style.display = 'none';
       el.setAttribute('aria-hidden', 'true');
+      el.classList.add('hidden');
     });
+  }
+
+  function showElement(selector) {
+    document.querySelectorAll(selector).forEach((el) => {
+      el.style.display = '';
+      el.removeAttribute('aria-hidden');
+      el.classList.remove('hidden', 'display-none');
+    });
+  }
+
+  function toggleElementVisibility(selector, shouldShow) {
+    if (shouldShow) showElement(selector);
+    else hideElement(selector);
   }
 
   function showWelcomeCard() {
     if (sessionStorage.getItem('welcomeShown')) return;
 
-    const avatarBg = currentUser.gender === 'female' ? 'from-pink-500 to-pink-600' : 'from-blue-500 to-blue-600';
+    const u = window.currentUser || currentUser;
+    const avatarBg = u.gender === 'female' ? 'from-pink-500 to-pink-600' : 'from-blue-500 to-blue-600';
     const wrapper = document.createElement('div');
     wrapper.id = 'welcomeCard';
     wrapper.className = 'fixed top-6 right-6 md:right-10 z-[100000] glass-panel rounded-2xl shadow-2xl border border-white/70 p-4 min-w-[280px] max-w-[90vw] flex items-center gap-4 transition-all duration-700 transform translate-y-[-150%] opacity-0';
@@ -128,7 +143,7 @@
       </div>
       <div class="flex-1 text-right" dir="rtl">
         <div class="text-sm text-gray-500 font-bold mb-1">أهلاً بك في منظومة GIS</div>
-        <div class="text-lg font-black text-gray-800">${getDisplayName(currentUser)}</div>
+        <div class="text-lg font-black text-gray-800">${getDisplayName(window.currentUser || currentUser)}</div>
       </div>
       <button id="closeWelcomeBtn" class="text-gray-400 hover:text-red-500 transition-colors self-start">
         <i class="fa-solid fa-xmark text-xl"></i>
@@ -156,37 +171,43 @@
   }
 
   function ensureSessionCard() {
-    const existing = document.getElementById('sessionAccessCard');
-    if (existing) return;
-
+    let wrapper = document.getElementById('sessionAccessCard');
+    const u = window.currentUser || currentUser;
     const assigned = getAssignedGovernorateRaw();
-    const govText = currentUser.role === 'admin'
+    const govText = u.role === 'admin'
       ? 'كل المحافظات'
       : (Array.isArray(assigned) ? assigned.join('، ') : assigned || 'غير محدد');
 
-    const iconBg = currentUser.gender === 'female' ? 'bg-pink-500/10 text-pink-600' : 'bg-blue-500/10 text-blue-600';
-    const wrapper = document.createElement('div');
-    wrapper.id = 'sessionAccessCard';
-    wrapper.className = 'fixed bottom-4 left-4 z-[9999] glass-panel rounded-2xl shadow-xl border border-white/70 p-3 min-w-[240px] max-w-[90vw]';
+    const isFemale = u.gender === 'female';
+    const iconBg = isFemale ? 'bg-pink-500/10 text-pink-600' : 'bg-blue-500/10 text-blue-600';
+    const cardBg = isFemale ? 'bg-pink-100/40 border-pink-200/50' : 'bg-white/40 border-white/70';
+
+    if (!wrapper) {
+      wrapper = document.createElement('div');
+      wrapper.id = 'sessionAccessCard';
+      document.body.appendChild(wrapper);
+    }
+
+    wrapper.className = `fixed bottom-4 left-4 z-[9999] glass-panel rounded-2xl shadow-xl border p-3 min-w-[240px] max-w-[90vw] transition-all duration-500 ${cardBg}`;
     wrapper.innerHTML = `
       <div class="flex items-start gap-3" dir="rtl">
-        <div class="w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0">
+        <div class="w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0 transition-colors">
           <i class="fa-solid fa-user-shield"></i>
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-sm font-extrabold text-gray-800 truncate">${getDisplayName(currentUser)}</div>
-          <div class="text-xs text-gray-500 mt-1">${currentUser.role === 'admin' ? 'مسؤول النظام' : 'عرض حسب الصلاحية'}</div>
+          <div class="text-sm font-extrabold text-gray-800 truncate">${getDisplayName(u)}</div>
+          <div class="text-xs text-gray-500 mt-1">${u.role === 'admin' ? 'مسؤول النظام' : 'عرض حسب الصلاحية'}</div>
           <div class="text-xs text-gray-600 mt-1 break-words">المحافظة: ${govText}</div>
         </div>
       </div>
       <button id="logoutBtnFloating" class="mt-3 w-full bg-white/70 hover:bg-white text-red-600 font-bold py-2 rounded-xl transition-all">تسجيل الخروج</button>
     `;
-    document.body.appendChild(wrapper);
     wrapper.querySelector('#logoutBtnFloating')?.addEventListener('click', window.logout);
   }
 
   function applyGovernorateSelectorLock(selector) {
-    if (!selector || currentUser.role === 'admin') return;
+    const u = window.currentUser || currentUser;
+    if (!selector || u.role === 'admin') return;
     const assignedList = getAssignedGovernoratesList();
     if (!assignedList.length) return;
 
@@ -225,29 +246,33 @@
   }
 
   function isObserverRole() {
-    const roleValue = normalizeArabic(currentUser?.role || '');
+    const u = window.currentUser || currentUser;
+    const roleValue = normalizeArabic(u?.role || '');
     return ['مراقب', 'observer', 'viewer', 'monitor', 'read only', 'readonly'].includes(roleValue);
   }
 
   function applyObserverDisplayMode() {
+    // تم تعطيل الإخفاء الإجباري بناءً على الدور (مراقب) لكي لا يتعارض مع الصلاحيات المخصصة التي يمنحها المسؤول.
+    // الصلاحيات الآن تعتمد حصرياً على ما يتم تحديده في لوحة تحكم المستخدمين.
+    /*
     if (!isObserverRole()) return;
-
     hideElement('#nav-home');
     hideElement('#nav-users');
     hideElement('#toggleEditBtn, #toggleAdminBtn, #toggleExportBtn');
     hideElement('#editPanel, #adminPanel, #exportPanel');
-
     const attrPanel = document.getElementById('attributesPanel');
     if (attrPanel) attrPanel.classList.add('hidden-panel');
+    */
   }
 
   function applyUIPermissions() {
-    if (!currentUser) return;
+    if (!window.currentUser) return;
 
-    const isAdmin = currentUser.role === 'admin';
+    const u = window.currentUser;
+    const isAdmin = u.role === 'admin';
     const permissionValue = (key, defaultValue = true) => {
       if (isAdmin) return true;
-      return currentUser[key] === undefined ? defaultValue : currentUser[key] !== false;
+      return u[key] === undefined ? defaultValue : u[key] !== false;
     };
 
     const navMapping = [
@@ -262,6 +287,12 @@
     navMapping.forEach((item) => {
       setNavVisibility(item.id, permissionValue(item.perm, item.defaultValue));
     });
+
+    // Hide Map Editor tab for restricted users if they have NO map-related permissions at all
+    const canSeeMap = isAdmin || permissionValue('canDraw', false) || permissionValue('canEditGeometry', false) || permissionValue('canEditData', false) || permissionValue('canEditStatus', false);
+    if (!canSeeMap) {
+        setNavVisibility('nav-home', false);
+    }
 
     const mapToolsMapping = [
       {
@@ -279,37 +310,35 @@
     ];
 
     mapToolsMapping.forEach((item) => {
-      if (!permissionValue(item.perm, false)) {
-        hideElement(item.selector);
-      }
+      toggleElementVisibility(item.selector, permissionValue(item.perm, false));
     });
 
     const canDraw = permissionValue('canDraw', false);
     const canEditGeometry = permissionValue('canEditGeometry', false);
     const canDeleteGeometry = permissionValue('canDeleteGeometry', false);
 
-    if (!canDraw && !canEditGeometry && !canDeleteGeometry) {
-      hideElement('#toggleEditBtn');
-      hideElement('#editPanel');
-    }
+    const canEditAny = canDraw || canEditGeometry || canDeleteGeometry;
+    toggleElementVisibility('#toggleEditBtn', canEditAny);
+    toggleElementVisibility('#editPanel', canEditAny);
 
-    if (!permissionValue('canManageUsers', false)) {
-      hideElement('#toggleAdminBtn');
-      hideElement('#adminPanel');
-    }
+    const canManage = permissionValue('canManageUsers', false);
+    toggleElementVisibility('#toggleAdminBtn', canManage);
+    toggleElementVisibility('#adminPanel', canManage);
 
-    if (!permissionValue('canExport', false)) {
-      hideElement('#toggleExportBtn');
-      hideElement('#exportPanel');
-    }
+    const canExport = permissionValue('canExport', false);
+    toggleElementVisibility('#toggleExportBtn', canExport);
+    toggleElementVisibility('#exportPanel', canExport);
+    toggleElementVisibility('#btnExportPDF', canExport);
+    toggleElementVisibility('#btnExportExcel', canExport);
 
     const canEditData = permissionValue('canEditData', false);
     const canEditStatus = permissionValue('canEditStatus', false);
 
-    if (!canEditData && !canEditStatus) {
-      hideElement('#attributesPanel');
-      hideElement('#mapEditHint');
-    } else {
+    const anyAttrEdit = canEditData || canEditStatus;
+    toggleElementVisibility('#attributesPanel', anyAttrEdit);
+    toggleElementVisibility('#mapEditHint', anyAttrEdit);
+    
+    if (anyAttrEdit) {
       const panel = document.getElementById('attributesPanel');
       if (panel) {
         const inputs = panel.querySelectorAll('input');
@@ -317,13 +346,21 @@
           if (!canEditData) {
             input.disabled = true;
             input.classList.add('opacity-50', 'cursor-not-allowed');
+          } else {
+            input.disabled = false;
+            input.classList.remove('opacity-50', 'cursor-not-allowed');
           }
         });
 
         const statusSelect = panel.querySelector('select');
-        if (statusSelect && !canEditStatus) {
-          statusSelect.disabled = true;
-          statusSelect.classList.add('opacity-50', 'cursor-not-allowed');
+        if (statusSelect) {
+          if (!canEditStatus) {
+            statusSelect.disabled = true;
+            statusSelect.classList.add('opacity-50', 'cursor-not-allowed');
+          } else {
+            statusSelect.disabled = false;
+            statusSelect.classList.remove('opacity-50', 'cursor-not-allowed');
+          }
         }
 
         const saveBtn = panel.querySelector('#saveAttributesBtn');
@@ -333,10 +370,7 @@
       }
     }
 
-    if (!permissionValue('canExport', false)) {
-      hideElement('#btnExportPDF');
-      hideElement('#btnExportExcel');
-    }
+    /* Removed individual PDF/Excel hide as handled above */
 
     applyObserverDisplayMode();
 
@@ -345,6 +379,13 @@
 
     showWelcomeCard();
     ensureSessionCard();
+
+    // Apply gender theme to body
+    if (u.gender === 'female') {
+      document.body.classList.add('theme-female');
+    } else {
+      document.body.classList.remove('theme-female');
+    }
   }
 
   window.logout = async function logout() {
@@ -357,7 +398,8 @@
   };
 
   window.canEditCurrentUser = function () {
-    return currentUser && (currentUser.role === 'admin' || currentUser.canManageUsers === true);
+    const u = window.currentUser || currentUser;
+    return u && (u.role === 'admin' || u.canManageUsers === true || u.canEditData === true || u.canEditStatus === true);
   };
   window.getAssignedGovernorate = function () {
     return getAssignedGovernorateRaw();
@@ -371,6 +413,9 @@
   window.isFeatureAllowed = isFeatureAllowed;
   window.filterGeoJSONByUser = filterGeoJSONByUser;
   window.applyGovernorateSelectorLock = applyGovernorateSelectorLock;
+  window.isAdmin = function() {
+    return window.currentUser && window.currentUser.role === 'admin';
+  };
   window.applyUIPermissions = applyUIPermissions;
 
   document.addEventListener('DOMContentLoaded', () => {

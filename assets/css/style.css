@@ -628,6 +628,45 @@
         body.theme-female .bg-gradient-to-br.from-blue-500.to-blue-600 { background-image: linear-gradient(to bottom right, #db2777, #be185d) !important; }
         body.theme-female .nav-indicator { background: rgba(219, 39, 119, 0.1) !important; border-color: rgba(219, 39, 119, 0.2) !important; }
         body.theme-female .loader-fill { background: linear-gradient(90deg, #9d174d, #db2777, #f472b6) !important; box-shadow: 0 0 10px rgba(219,39,119,0.4) !important;}
+        
+        /* Glassy Pink Background for Female Theme */
+        body.theme-female #nebula-container {
+            background-color: #f8fafc !important; /* Extremely light slate/white */
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(244, 114, 182, 0.08) 0, transparent 55%),
+                radial-gradient(at 50% 0%, rgba(56, 189, 248, 0.07) 0, transparent 55%),
+                radial-gradient(at 100% 0%, rgba(244, 114, 182, 0.08) 0, transparent 55%),
+                radial-gradient(at 0% 100%, rgba(56, 189, 248, 0.07) 0, transparent 55%),
+                radial-gradient(at 100% 100%, rgba(219, 39, 119, 0.06) 0, transparent 55%) !important;
+        }
+
+        body.theme-female #loader {
+            background-color: #f8fafc !important;
+            background-image:
+                radial-gradient(at 0%   0%,   rgba(219, 39, 119, 0.08) 0, transparent 55%),
+                radial-gradient(at 50%  0%,   rgba(56, 189, 248, 0.08) 0, transparent 55%),
+                radial-gradient(at 100% 0%,   rgba(190, 24, 93, 0.08) 0, transparent 55%),
+                radial-gradient(at 0%   100%, rgba(56, 189, 248, 0.06) 0, transparent 55%),
+                radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.08) 0, transparent 55%) !important;
+        }
+
+        body.theme-female .loader-orb-1 { background: rgba(244, 114, 182, 0.1) !important; }
+        body.theme-female .loader-orb-2 { background: rgba(56, 189, 248, 0.1) !important; }
+        body.theme-female .radar-ring { border-color: rgba(219, 39, 119, 0.2) !important; }
+        body.theme-female .radar-pulse {
+             background: conic-gradient(from 0deg,
+                rgba(219, 39, 119, 0)    0%,
+                rgba(219, 39, 119, 0.25) 15%,
+                rgba(219, 39, 119, 0)    25%
+            ) !important;
+        }
+        body.theme-female .radar-icon i {
+            background: linear-gradient(135deg, #be185d, #db2777) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+        }
+        body.theme-female .loader-tag, body.theme-female .loader-pct { color: #db2777 !important; }
+        body.theme-female .loader-track { background: rgba(219, 39, 119, 0.1) !important; border-color: rgba(219, 39, 119, 0.1) !important; }
 
 /* ================================================================
    تحسينات صفحة الإخراج الفني — اتساق بصري وتوازن المساحات

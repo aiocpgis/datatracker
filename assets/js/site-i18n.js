@@ -54,7 +54,7 @@
       navHome: 'Map Editor',
       navStats: 'Analytical Statistics',
       navFlow: 'Data View',
-      navStyle: 'Cartographic Output',
+      navStyle: 'Art Design',
       navPersonas: 'Survey Outputs',
       navUsers: 'Control Center',
       live: 'Connected to server (Live)',

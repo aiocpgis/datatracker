@@ -71,7 +71,7 @@ function normalizeIdentifier(value) {
     return String(value || '').trim().toLowerCase();
 }
 
-function normalizeUserRecord(userData = {}, docId = '') {
+export function normalizeUserRecord(userData = {}, docId = '') {
     const email = (userData.email || docId || '').trim().toLowerCase();
     const username = (userData.username || (email.includes('@') ? email.split('@')[0] : email) || '').trim();
 
@@ -96,7 +96,13 @@ function normalizeUserRecord(userData = {}, docId = '') {
         canExport: userData.role === 'admin' ? true : userData.canExport === true,
         canManageUsers: userData.role === 'admin' ? true : userData.canManageUsers === true,
         canEditGeometry: userData.role === 'admin' ? true : userData.canEditGeometry === true,
-        canDeleteGeometry: userData.role === 'admin' ? true : userData.canDeleteGeometry === true
+        canEditGeometry: userData.role === 'admin' ? true : userData.canEditGeometry === true,
+        canDeleteGeometry: userData.role === 'admin' ? true : userData.canDeleteGeometry === true,
+        view_statu: userData.view_statu !== false,
+        view_engineers: userData.view_engineers !== false,
+        view_teams: userData.view_teams !== false,
+        view_units: userData.view_units === true, // False by default for non-admins
+        gender: userData.gender || 'male'
     };
 }
 
