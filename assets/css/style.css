@@ -1682,3 +1682,21 @@ html[dir="ltr"] #users table td {
             background: rgba(37, 99, 235, 0.3);
             border-radius: 99px;
         }
+
+/* OSM raster tile dark mode; avoids a basemap provider API key. */
+.gis-basemap-dark .leaflet-tile {
+    filter: grayscale(0.3) invert(1) hue-rotate(180deg) brightness(0.88) contrast(0.92);
+}
+
+/* Mobile home map: prioritize the map instead of excessive empty page space. */
+@media (max-width: 768px) {
+    body.page-home .pages-wrapper {
+        min-height: 0;
+    }
+    body.page-home #home > section {
+        margin-bottom: 1rem;
+    }
+    body.page-home #gazaMapWrapper {
+        height: clamp(420px, calc(100dvh - 180px), 750px) !important;
+    }
+}
