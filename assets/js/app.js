@@ -344,15 +344,24 @@ window.geoJsonLayers = geoJsonLayers;
             }
         };
 
+        // OSM tiles provide a basemap without CARTO's API-key watermark.
+        function createOsmBaseLayer(dark = false) {
+            return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
+                maxZoom: 19,
+                className: dark ? 'gis-basemap-dark' : 'gis-basemap-light'
+            });
+        }
+
         window.switchMapTheme = function(theme) {
             if(!window.mapInstance) return;
             const map = window.mapInstance;
             
             if(!window.baseLayersMap) {
                  window.baseLayersMap = {
-                    light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CARTO', maxZoom: 19 }),
-                    dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CARTO', maxZoom: 19 }),
-                    osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 19 }),
+                    light: createOsmBaseLayer(false),
+                    dark: createOsmBaseLayer(true),
+                    osm: createOsmBaseLayer(false),
                     satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '&copy; Esri', maxZoom: 19 })
                 };
             }
@@ -571,6 +580,19 @@ window.geoJsonLayers = geoJsonLayers;
                 if (typeof L !== 'undefined') {
                     initGazaMap();
                     initViewMap(); // تهيئة خريطة العرض والشرح
+                    // Refresh Leaflet's internal size when responsive map containers change.
+                    const refreshMapSizes = () => {
+                        if (window.mapInstance) window.mapInstance.invalidateSize({ pan: false });
+                        if (window.viewMapInstance) window.viewMapInstance.invalidateSize({ pan: false });
+                    };
+                    window.addEventListener('resize', refreshMapSizes, { passive: true });
+                    if (typeof ResizeObserver !== 'undefined') {
+                        const mapResizeObserver = new ResizeObserver(() => window.requestAnimationFrame(refreshMapSizes));
+                        ['gazaMapWrapper', 'viewMapWrapper'].forEach(id => {
+                            const element = document.getElementById(id);
+                            if (element) mapResizeObserver.observe(element);
+                        });
+                    }
                 } else {
                     console.warn("Leaflet GL not loaded.");
                 }
@@ -2847,7 +2869,7 @@ window.geoJsonLayers = geoJsonLayers;
                 center: [31.4167, 34.3333],
                 zoom: 11,
                 zoomControl: false,
-                attributionControl: false
+                attributionControl: true
             });
             window.viewMapInstance = map;
 
@@ -2855,12 +2877,8 @@ window.geoJsonLayers = geoJsonLayers;
 
             // إنشاء خرائط أساس مستقلة لهذه الخريطة لكي لا تتضارب مع خريطة التعديل الأساسية
             window.viewBaseLayersMap = {
-                light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                    attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
-                }),
-                dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                    attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
-                }),
+                light: createOsmBaseLayer(false),
+                dark: createOsmBaseLayer(true),
                 satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                     attribution: 'Tiles &copy; Esri'
                 })
